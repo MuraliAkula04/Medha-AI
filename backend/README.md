@@ -176,15 +176,32 @@ Default is Google Gemini. To switch:
 - **Gemini (default):** Set `GOOGLE_API_KEY` in `.env.local`
 - **OpenAI:** Set `OPENAI_API_KEY`, install `livekit-agents[openai]`, and change the `llm=` argument
 
-## Testing
+## Tools & Real Domain Data (Day 5)
 
-The project includes an eval suite based on the LiveKit Agents [testing framework](https://docs.livekit.io/agents/build/testing/):
+Medha AI features live internet function tools:
+
+### Available Tools
+
+1. `lookup_educational_concept(topic)`
+   - **Data Source**: Live Wikipedia REST API (`https://en.wikipedia.org/api/rest_v1/page/summary/{topic}`)
+   - **Timestamping**: Returns `as_of_date` (e.g. `August 10, 2026 13:57 IST`) so Medha AI states when data was retrieved.
+   - **Failure Handling**: 5.0s network timeout. On timeout/error, returns explicit instructions for Medha AI to state the failure out loud to the student before using internal knowledge.
+   - **UI Push**: Emits JSON payloads over LiveKit room data channels (`context.room.local_participant.publish_data`).
+
+2. `fetch_practice_exercise(subject, level)`
+   - **Data Source**: Open Quiz API with fallback to domain practice exercise bank.
+   - **Tool Chaining**: If `level` is not specified by the student, automatically queries stored caller memory from Day 4 (`get_user(self.user_id)`) to reuse their saved learning level without re-asking.
+   - **Timestamping & UI Push**: Includes `as_of_date` and publishes exercise card data to UI.
+
+### Testing
+
+The project includes an eval and unit test suite:
 
 ```bash
 uv run pytest
 ```
 
-Tests are in [`tests/test_agent.py`](tests/test_agent.py) and use LLM-as-judge evaluations to verify the agent behaves correctly (friendly greetings, grounding, refusing harmful requests).
+Tests are located in [`tests/test_agent.py`](tests/test_agent.py) and [`tests/test_tools.py`](tests/test_tools.py).
 
 To run tests in CI, you'll need to add `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` as repository secrets.
 

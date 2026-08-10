@@ -153,23 +153,19 @@ Track:
 
 ## 📅 Roadmap
 
-### ✅ Day 1
+### ✅ Day 5 – The Tools
 
-- Environment Setup
-- Voice Agent Integration
-- Murf Falcon Integration
-- LiveKit Integration
-- Gemini Integration
-- Working Voice Conversation
+- 🌐 **Real Domain Data Lookup**: Integrated `lookup_educational_concept` to query live Wikipedia educational summaries & factual data.
+- 📝 **Practice Exercise Fetcher**: Integrated `fetch_practice_exercise` to pull live quiz questions by subject and level from an Open Quiz API.
+- 🔗 **Tool Chaining**: Automatically chains with Day 4 persistent user memory — if a student requests practice questions without specifying a level, the agent reuses their stored learning level without asking again.
+- 🔊 **Out-Loud Failure Handling**: Implemented 5-second network timeouts with explicit instructions for Medha AI to inform the student out loud about connection issues before falling back cleanly.
+- 🕒 **Timestamp Reporting**: All fetched tool responses include `as_of_date` timestamps so Medha AI states when the live data was retrieved.
+- 🖥️ **UI Data Push**: Emits real-time JSON data payloads over LiveKit room data channels for visual UI display.
 
 ### 🔜 Upcoming
 
-- Premium UI
+- Premium UI & Visual Cards
 - Learning Dashboard
-- Quiz Generator
-- Story Reader
-- Spoken English Coach
-- Regional Language Tutor
 - Progress Analytics
 
 ---

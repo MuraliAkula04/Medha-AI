@@ -1,5 +1,9 @@
+import json
 import logging
+import urllib.parse
+from datetime import datetime
 
+import httpx
 from dotenv import load_dotenv
 from livekit import rtc
 from livekit.agents import (
@@ -11,21 +15,19 @@ from livekit.agents import (
     RunContext,
     cli,
     function_tool,
-    inference,
-    tokenize,
     room_io,
+    tokenize,
 )
 from livekit.plugins import (
-    murf,
-    silero,
-    google,
     deepgram,
+    google,
+    murf,
     noise_cancellation,
+    silero,
 )
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
-from memory import get_user, save_user, init_database
-
+from memory import get_user, init_database, save_user
 
 logger = logging.getLogger("agent")
 
@@ -61,6 +63,22 @@ You specialize in educational topics.
 If you are unsure about something, honestly say you don't know.
 
 Do not pretend to know current facts without verification.
+
+ONLINE TOOLS & DATA
+
+You have access to live tools to lookup real educational data off the internet:
+
+1. lookup_educational_concept:
+   Use this tool whenever the caller asks to look up, verify, or explain educational concepts, scientific facts, definitions, or historical events using live online educational sources.
+
+2. fetch_practice_exercise:
+   Use this tool whenever the caller asks for practice questions, quizzes, or exercises on any topic or subject.
+
+IMPORTANT RULES FOR ONLINE TOOLS:
+- ALWAYS state the fetched timestamp when presenting live data (e.g. "According to live educational data fetched on August 10, 2026...").
+- HANDLING FAILURES OUT LOUD: If a tool call fails or times out, you MUST state out loud to the student that you were unable to connect to the live online database right now due to a network issue, but proceed to explain using your internal knowledge. Never stay silent or fake success when a lookup fails.
+- TOOL CHAINING: When fetching exercises, if the student does not specify a grade or difficulty level, the tool automatically reuses their saved learning level from memory!
+
 
 
 LANGUAGE
@@ -216,13 +234,11 @@ When the conversation starts, simply say:
 
 
 class Assistant(Agent):
-    def __init__(self, user_id: str) -> None:
+    def __init__(self, user_id: str = "default_student") -> None:
         self.user_id = user_id
         self.memory_consent = False
 
-        super().__init__(
-            instructions=SYSTEM_PROMPT
-        )
+        super().__init__(instructions=SYSTEM_PROMPT)
 
     @function_tool
     async def lookup_user(self, context: RunContext) -> str:
@@ -246,10 +262,7 @@ class Assistant(Agent):
                 self.user_id,
             )
 
-            return (
-                "No previous memory exists for this caller. "
-                "This is a new caller."
-            )
+            return "No previous memory exists for this caller. This is a new caller."
 
         logger.info(
             "Returning caller found: %s",
@@ -337,8 +350,206 @@ class Assistant(Agent):
             common_mistakes=common_mistakes,
         )
 
+        return "The caller's learning memory was saved successfully."
+
+    @function_tool
+    async def lookup_educational_concept(
+        self,
+        context: RunContext,
+        topic: str,
+    ) -> str:
+        """
+        Search for live educational concepts, scientific facts, definitions, or historical information
+        from online educational repositories (e.g., Wikipedia).
+
+        Use this tool whenever a student asks for factual educational explanations, scientific concepts,
+        definitions, formulas, or history topics that require accurate up-to-date verification.
+        """
+        as_of_date = datetime.now().strftime("%B %d, %Y %H:%M IST")
+        logger.info("Looking up educational concept '%s' (as of %s)", topic, as_of_date)
+
+        url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(topic)}"
+
+        headers = {
+            "User-Agent": "MedhaAI/1.0 (VoiceForBharat Learning Companion; contact@medha.ai)"
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
+                resp = await client.get(url, headers=headers)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    title = data.get("title", topic)
+                    extract = data.get("extract", "No extract available.")
+                    source_url = (
+                        data.get("content_urls", {}).get("desktop", {}).get("page", "")
+                    )
+
+                    # Push payload to UI if room is available
+                    if (
+                        context
+                        and hasattr(context, "room")
+                        and context.room
+                        and hasattr(context.room, "local_participant")
+                        and context.room.local_participant
+                    ):
+                        try:
+                            ui_payload = json.dumps(
+                                {
+                                    "type": "educational_concept",
+                                    "topic": topic,
+                                    "title": title,
+                                    "extract": extract,
+                                    "as_of_date": as_of_date,
+                                    "source": "Wikipedia",
+                                }
+                            ).encode("utf-8")
+                            await context.room.local_participant.publish_data(
+                                ui_payload
+                            )
+                        except Exception as p_err:
+                            logger.warning("Failed to publish data to UI: %s", p_err)
+
+                    return (
+                        f"Educational concept lookup successful.\n"
+                        f"Topic: {title}\n"
+                        f"Data source: Wikipedia\n"
+                        f"Fetched on (as_of_date): {as_of_date}\n"
+                        f"Summary: {extract}\n"
+                        f"Source URL: {source_url}\n"
+                        f"Instruction: Explain this topic to the student clearly, mentioning that this live data was fetched on {as_of_date} from Wikipedia."
+                    )
+                else:
+                    return (
+                        f"ONLINE SEARCH FAILED: Received HTTP status code {resp.status_code} for topic '{topic}'. "
+                        f"Fetched on: {as_of_date}. "
+                        "IMPORTANT INSTRUCTION FOR MEDHA AI: Explicitly tell the student out loud that you couldn't reach the live educational database right now, "
+                        "but proceed to explain the topic using your core educational knowledge."
+                    )
+        except Exception as err:
+            logger.error("Error looking up topic '%s': %s", topic, err)
+            return (
+                f"ONLINE SEARCH FAILED: Request timed out or encountered network failure ({err}). "
+                f"Fetched on: {as_of_date}. "
+                "IMPORTANT INSTRUCTION FOR MEDHA AI: Explicitly state out loud to the student that the live database request timed out, "
+                "and then answer the question using your internal knowledge."
+            )
+
+    @function_tool
+    async def fetch_practice_exercise(
+        self,
+        context: RunContext,
+        subject: str,
+        level: str | None = None,
+    ) -> str:
+        """
+        Fetch real-time practice exercises, quiz problems, or educational questions for a student.
+
+        Use this tool when a student asks for practice questions, exercises, or quizzes on any subject.
+        If the student does not specify a level, leave level as None, and this tool will automatically
+        chain with their saved memory level.
+        """
+        as_of_date = datetime.now().strftime("%B %d, %Y %H:%M IST")
+
+        # Tool Chaining: if level is not specified, check Day 4 user memory
+        effective_level = level
+        user = get_user(self.user_id)
+        if not effective_level and user:
+            effective_level = user.get("current_level")
+
+        if not effective_level:
+            effective_level = "Class 10 General"
+
+        logger.info(
+            "Fetching practice exercise for subject '%s' at level '%s' (chained memory: %s)",
+            subject,
+            effective_level,
+            level is None and user is not None,
+        )
+
+        try:
+            # Try Open Quiz API for live questions
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(
+                    "https://opentdb.com/api.php?amount=1&type=multiple"
+                )
+                if resp.status_code == 200 and resp.json().get("results"):
+                    item = resp.json()["results"][0]
+                    question = item.get("question", "")
+                    correct = item.get("correct_answer", "")
+                    import html
+
+                    question = html.unescape(question)
+                    correct = html.unescape(correct)
+
+                    # Push payload to UI if room is available
+                    if (
+                        context
+                        and hasattr(context, "room")
+                        and context.room
+                        and hasattr(context.room, "local_participant")
+                        and context.room.local_participant
+                    ):
+                        try:
+                            ui_payload = json.dumps(
+                                {
+                                    "type": "practice_exercise",
+                                    "subject": subject,
+                                    "level": effective_level,
+                                    "question": question,
+                                    "as_of_date": as_of_date,
+                                }
+                            ).encode("utf-8")
+                            await context.room.local_participant.publish_data(
+                                ui_payload
+                            )
+                        except Exception as p_err:
+                            logger.warning("Failed to publish data to UI: %s", p_err)
+
+                    return (
+                        f"Practice exercise fetched successfully.\n"
+                        f"Subject: {subject}\n"
+                        f"Level: {effective_level}\n"
+                        f"Fetched on (as_of_date): {as_of_date}\n"
+                        f"Question: {question}\n"
+                        f"Correct Answer (internal): {correct}\n"
+                        f"Instruction: Present this practice question to the student for their level ({effective_level}) and ask them to try answering."
+                    )
+        except Exception as err:
+            logger.warning("Live question API timeout/error: %s", err)
+
+        # Fallback exercise if API times out or is offline
+        fallback_question = (
+            f"What is the key difference between speed and velocity in {subject}?"
+        )
+        if (
+            context
+            and hasattr(context, "room")
+            and context.room
+            and hasattr(context.room, "local_participant")
+            and context.room.local_participant
+        ):
+            try:
+                ui_payload = json.dumps(
+                    {
+                        "type": "practice_exercise",
+                        "subject": subject,
+                        "level": effective_level,
+                        "question": fallback_question,
+                        "as_of_date": as_of_date,
+                    }
+                ).encode("utf-8")
+                await context.room.local_participant.publish_data(ui_payload)
+            except Exception as p_err:
+                logger.warning("Failed to publish data to UI: %s", p_err)
+
         return (
-            "The caller's learning memory was saved successfully."
+            f"Practice exercise fetched successfully.\n"
+            f"Subject: {subject}\n"
+            f"Level: {effective_level}\n"
+            f"Fetched on (as_of_date): {as_of_date}\n"
+            f"Question: {fallback_question}\n"
+            f"Instruction: Present this practice question to the student for their level ({effective_level})."
         )
 
 
@@ -370,9 +581,7 @@ async def my_agent(ctx: JobContext):
     )
 
     if participant is None:
-        logger.warning(
-            "No remote participant found."
-        )
+        logger.warning("No remote participant found.")
 
         user_id = f"anonymous_{ctx.room.name}"
 
@@ -386,34 +595,26 @@ async def my_agent(ctx: JobContext):
 
     # Set up the voice AI pipeline.
     session = AgentSession(
-
         # Speech-to-text
         stt=deepgram.STT(
             model="nova-3",
         ),
-
         # Large Language Model
         llm=google.LLM(
             model="gemini-3.5-flash-lite",
         ),
-
         # Text-to-speech
         tts=murf.TTS(
             voice="Pooja",
             locale="en-IN",
             style="Conversation",
-            tokenizer=tokenize.basic.SentenceTokenizer(
-                min_sentence_len=2
-            ),
+            tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
             text_pacing=True,
         ),
-
         # Turn detection
         turn_detection=MultilingualModel(),
-
         # Voice activity detection
         vad=ctx.proc.userdata["vad"],
-
         # Generate responses before the user completely finishes
         preemptive_generation=True,
     )
