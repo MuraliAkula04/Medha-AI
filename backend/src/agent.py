@@ -1,3 +1,5 @@
+import asyncio
+import contextlib
 import json
 import logging
 import urllib.parse
@@ -27,7 +29,7 @@ from livekit.plugins import (
 )
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
-from memory import get_user, init_database, save_user
+from memory import get_user, init_database, save_user, set_opt_out_status
 
 logger = logging.getLogger("agent")
 
@@ -225,9 +227,22 @@ When the user code-mixes, code-mix your response too.
 Avoid sounding like a textbook.
 
 
+OUTBOUND CALL RULES & OPT-OUT
+
+When on an automated outbound call, you MUST open with the exact 3-part greeting:
+1. Who is calling: "Hello! I am Medha AI, your AI Voice Learning Companion from VoiceForBharat."
+2. Why: "I am calling for your scheduled daily practice call to review today's concept and quiz."
+3. How to stop: "If you ever want to end this call or stop receiving daily practice calls, just say 'stop' or 'unsubscribe'."
+
+If the caller asks to stop receiving calls, says "stop calling me", "unsubscribe", or requests to opt out:
+1. Immediately call the `unsubscribe_outbound_calls` tool.
+2. Confirm out loud that they have been unsubscribed from automated daily calls.
+3. Wish them a great day and conclude the call politely.
+
+
 FIRST GREETING
 
-When the conversation starts, simply say:
+When an inbound conversation starts, simply say:
 
 "Hello! I'm Medha AI. How can I help you learn today?"
 """
@@ -239,6 +254,39 @@ class Assistant(Agent):
         self.memory_consent = False
 
         super().__init__(instructions=SYSTEM_PROMPT)
+
+    @function_tool
+    async def unsubscribe_outbound_calls(self, context: RunContext) -> str:
+        """
+        Unsubscribe the current caller from automated daily outbound practice calls.
+
+        Use this tool whenever the caller asks to stop receiving calls, requests to opt out,
+        says 'stop calling me', 'unsubscribe', or 'do not call again'.
+        """
+        logger.info("Unsubscribing user %s from outbound calls", self.user_id)
+        set_opt_out_status(self.user_id, opted_out=True)
+
+        try:
+            if context.room and context.room.local_participant:
+                payload = json.dumps(
+                    {
+                        "type": "outbound_opt_out",
+                        "user_id": self.user_id,
+                        "status": "unsubscribed",
+                        "timestamp": datetime.now().isoformat(),
+                    }
+                )
+                await context.room.local_participant.publish_data(
+                    payload.encode("utf-8")
+                )
+        except Exception as err:
+            logger.warning("Could not publish opt-out data to room: %s", err)
+
+        return (
+            "The caller has been successfully unsubscribed from daily practice calls. "
+            "Politely inform the caller out loud that they will no longer receive automated calls, "
+            "wish them a great day, and end the conversation."
+        )
 
     @function_tool
     async def lookup_user(self, context: RunContext) -> str:
@@ -619,23 +667,53 @@ async def my_agent(ctx: JobContext):
         preemptive_generation=True,
     )
 
+    # Check room metadata or name to determine if this is an outbound call
+    metadata = {}
+    if ctx.room.metadata:
+        with contextlib.suppress(Exception):
+            metadata = json.loads(ctx.room.metadata)
+
+    is_outbound = (
+        metadata.get("is_outbound", False)
+        or ctx.room.name.startswith("outbound-")
+        or (
+            participant and participant.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP
+        )
+    )
+
     # Start the session with the memory-enabled assistant.
-    await session.start(
-        agent=Assistant(
-            user_id=user_id,
-        ),
-        room=ctx.room,
-        room_options=room_io.RoomOptions(
-            audio_input=room_io.AudioInputOptions(
-                noise_cancellation=lambda params: (
-                    noise_cancellation.BVCTelephony()
-                    if params.participant.kind
-                    == rtc.ParticipantKind.PARTICIPANT_KIND_SIP
-                    else noise_cancellation.BVC()
+    session_task = asyncio.create_task(
+        session.start(
+            agent=Assistant(
+                user_id=user_id,
+            ),
+            room=ctx.room,
+            room_options=room_io.RoomOptions(
+                audio_input=room_io.AudioInputOptions(
+                    noise_cancellation=lambda params: (
+                        noise_cancellation.BVCTelephony()
+                        if params.participant.kind
+                        == rtc.ParticipantKind.PARTICIPANT_KIND_SIP
+                        else noise_cancellation.BVC()
+                    ),
                 ),
             ),
-        ),
+        )
     )
+
+    # If this is an outbound call, greet the user immediately with the mandatory 3-part greeting
+    if is_outbound:
+        topic_info = metadata.get("topic", "today's revision topic")
+        greeting_text = (
+            "Hello! I am Medha AI, your AI Voice Learning Companion from VoiceForBharat. "
+            f"I am calling for your scheduled daily practice call to review {topic_info} and take a quick quiz. "
+            "If you ever want to end this call or stop receiving daily practice calls, just say 'stop' or 'unsubscribe'."
+        )
+        # Give session.start a brief moment to finish room binding
+        await asyncio.sleep(0.5)
+        await session.say(greeting_text)
+
+    await session_task
 
 
 if __name__ == "__main__":

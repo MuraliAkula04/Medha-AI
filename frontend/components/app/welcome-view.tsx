@@ -1,19 +1,39 @@
 'use client';
 
-import {
-  ArrowRight,
-  BookOpen,
-  Brain,
-  Languages,
-  Mic,
-  Sparkles,
-} from 'lucide-react';
-import { motion } from 'motion/react';
-import { Button } from '@/components/ui/button';
+import { ArrowRight, Mic, Phone, PhoneCall, X } from 'lucide-react';
+import { motion, useAnimationFrame, AnimatePresence } from 'motion/react';
+import { useRef, useState, useCallback } from 'react';
 
 interface WelcomeViewProps {
   startButtonText: string;
   onStartCall: () => void;
+}
+
+const BAR_COUNT = 48;
+
+function useWaveform(active: boolean) {
+  const bars = useRef<number[]>(Array.from({ length: BAR_COUNT }, () => 0.08));
+  const phases = useRef<number[]>(
+    Array.from({ length: BAR_COUNT }, (_, i) => (i / BAR_COUNT) * Math.PI * 2),
+  );
+  const [, forceUpdate] = useState(0);
+
+  useAnimationFrame((t) => {
+    const time = t / 1000;
+    bars.current = phases.current.map((phase, i) => {
+      if (!active) {
+        return 0.06 + Math.sin(time * 0.8 + phase) * 0.04;
+      }
+      const center = 1 - Math.abs((i / BAR_COUNT - 0.5) * 2);
+      const wave1 = Math.sin(time * 3.1 + phase) * 0.5 + 0.5;
+      const wave2 = Math.sin(time * 5.7 + phase * 1.3) * 0.3 + 0.5;
+      const wave3 = Math.sin(time * 2.0 + phase * 0.7) * 0.4 + 0.5;
+      return 0.08 + center * (wave1 * wave2 * wave3) * 0.88;
+    });
+    forceUpdate((n) => n + 1);
+  });
+
+  return bars;
 }
 
 export const WelcomeView = ({
@@ -22,646 +42,424 @@ export const WelcomeView = ({
   ref,
   ...props
 }: React.ComponentProps<'div'> & WelcomeViewProps) => {
+  const [hovered, setHovered] = useState(false);
+  const bars = useWaveform(hovered);
+
+  // Phone Call Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [phoneNum, setPhoneNum] = useState('+91 93466 98489');
+  const [isCalling, setIsCalling] = useState(false);
+
+  const handleStart = useCallback(() => {
+    onStartCall();
+  }, [onStartCall]);
+
+  const handleStartPhoneCall = (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsCalling(true);
+    // Connect LiveKit voice agent after short ring animation
+    setTimeout(() => {
+      onStartCall();
+    }, 1500);
+  };
+
+  const handleCancelCall = () => {
+    setIsCalling(false);
+    setIsModalOpen(false);
+  };
+
   return (
     <div
       ref={ref}
       {...props}
-      className="relative flex min-h-screen w-full flex-col overflow-hidden bg-[#05080d] text-white"
+      className="relative flex min-h-screen w-full flex-col bg-[#09090b] text-white antialiased"
+      style={{ backgroundColor: '#09090b' }}
     >
-      {/* =========================================================
-          AMBIENT BACKGROUND
-      ========================================================= */}
+      {/* ── Noise texture ────────────────────────────────────────────────── */}
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-0 z-0 opacity-[0.028]"
+        style={{
+          backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`,
+          backgroundRepeat: 'repeat',
+          backgroundSize: '128px 128px',
+        }}
+      />
 
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        {/* Warm center glow */}
-        <motion.div
-          className="absolute left-1/2 top-[25%] h-[500px] w-[700px] -translate-x-1/2 rounded-full blur-[160px]"
-          style={{
-            background:
-              'radial-gradient(circle, rgba(245,158,11,0.10), rgba(14,165,233,0.05) 45%, transparent 70%)',
-          }}
-          animate={{
-            opacity: [0.5, 0.8, 0.5],
-            scale: [0.95, 1.05, 0.95],
-          }}
-          transition={{
-            duration: 6,
-            repeat: Infinity,
-            ease: 'easeInOut',
-          }}
-        />
+      {/* ── Subtle gradient ────────────────────────────────────────────── */}
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-x-0 top-0 z-0 h-[50vh]"
+        style={{
+          background:
+            'radial-gradient(ellipse 80% 50% at 50% -10%, rgba(99,102,241,0.09) 0%, transparent 70%)',
+        }}
+      />
 
-        {/* Left blue glow */}
-        <motion.div
-          className="absolute -left-40 top-[45%] h-[350px] w-[500px] rounded-full bg-cyan-500/[0.035] blur-[130px]"
-          animate={{
-            x: [0, 80, 0],
-            opacity: [0.3, 0.7, 0.3],
-          }}
-          transition={{
-            duration: 8,
-            repeat: Infinity,
-            ease: 'easeInOut',
-          }}
-        />
-
-        {/* Right green glow */}
-        <motion.div
-          className="absolute -right-40 top-[45%] h-[350px] w-[500px] rounded-full bg-emerald-500/[0.035] blur-[130px]"
-          animate={{
-            x: [0, -80, 0],
-            opacity: [0.3, 0.65, 0.3],
-          }}
-          transition={{
-            duration: 9,
-            repeat: Infinity,
-            ease: 'easeInOut',
-          }}
-        />
-
-        {/* Tiny floating particles */}
-        <FloatingParticle className="left-[12%] top-[24%]" delay={0} />
-        <FloatingParticle className="left-[22%] top-[62%]" delay={1.4} />
-        <FloatingParticle className="right-[17%] top-[27%]" delay={2.1} />
-        <FloatingParticle className="right-[25%] top-[66%]" delay={0.8} />
-        <FloatingParticle className="left-[40%] top-[18%]" delay={2.8} />
-      </div>
-
-      {/* =========================================================
-          HEADER
-      ========================================================= */}
-
-      <header className="relative z-30 flex h-[68px] items-center justify-between border-b border-white/[0.055] px-5 md:px-8">
-        {/* Brand */}
-        <div className="flex items-center gap-3">
-          <motion.div
-            className="flex h-9 w-9 items-center justify-center rounded-xl border border-amber-300/20 bg-gradient-to-br from-amber-400/20 to-white/[0.04] shadow-[0_0_30px_rgba(245,158,11,0.08)]"
-            animate={{
-              boxShadow: [
-                '0 0 20px rgba(245,158,11,0.05)',
-                '0 0 35px rgba(245,158,11,0.14)',
-                '0 0 20px rgba(245,158,11,0.05)',
-              ],
-            }}
-            transition={{
-              duration: 3,
-              repeat: Infinity,
-            }}
-          >
-            <Sparkles className="h-[17px] w-[17px] text-amber-300" />
-          </motion.div>
-
-          <div>
-            <div className="text-[15px] font-semibold tracking-tight">
-              Medha AI
-            </div>
-
-            <div className="text-[10px] tracking-wide text-white/35">
-              Voice Learning Companion
-            </div>
+      {/* ══ NAV ════════════════════════════════════════════════════════════ */}
+      <header className="relative z-20 flex h-14 items-center justify-between border-b border-white/[0.06] px-6 md:px-10">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-500/10 ring-1 ring-indigo-500/20">
+            <Mic className="h-[14px] w-[14px] text-indigo-400" />
           </div>
+          <span className="text-[14px] font-semibold tracking-tight text-white/90">
+            Medha AI
+          </span>
+          <span className="ml-0.5 rounded-full bg-white/[0.05] px-2 py-0.5 text-[10px] font-medium tracking-wide text-white/30 ring-1 ring-white/[0.07]">
+            BETA
+          </span>
         </div>
 
-        {/* Right side */}
-        <div className="flex items-center gap-3">
-          <div className="hidden text-[11px] font-semibold tracking-[0.18em] text-white/55 sm:block">
-            BUILT WITH{' '}
-            <span className="text-amber-300/90">
-              LIVEKIT AGENTS
-            </span>
-          </div>
+        <nav className="hidden items-center gap-6 text-[13px] text-white/40 sm:flex">
+          <span className="cursor-default transition-colors hover:text-white/70">
+            How it works
+          </span>
+          <span className="cursor-default transition-colors hover:text-white/70">
+            Languages
+          </span>
+          <span className="cursor-default transition-colors hover:text-white/70">
+            About
+          </span>
+        </nav>
 
-          <div className="flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.025] px-3 py-1.5 backdrop-blur-xl">
-            <span className="text-amber-300">
-              <Sparkles className="h-3.5 w-3.5" />
-            </span>
-
-            <span className="text-[11px] text-white/55">
-              Memory Active
-            </span>
-
-            <motion.span
-              className="h-1.5 w-1.5 rounded-full bg-emerald-400"
-              animate={{
-                opacity: [0.45, 1, 0.45],
-                scale: [0.9, 1.15, 0.9],
-              }}
-              transition={{
-                duration: 2,
-                repeat: Infinity,
-              }}
-            />
-          </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              setIsCalling(false);
+              setIsModalOpen(true);
+            }}
+            className="flex items-center gap-1.5 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3.5 py-1 text-[11px] font-medium text-indigo-300 transition-all hover:border-indigo-500/50 hover:bg-indigo-500/20"
+          >
+            <PhoneCall className="h-3 w-3" />
+            <span>Make Phone Call</span>
+          </button>
+          <LiveDot />
         </div>
       </header>
 
-      {/* =========================================================
-          MAIN CONTENT
-      ========================================================= */}
+      {/* ══ HERO ═══════════════════════════════════════════════════════════ */}
+      <main className="relative z-10 mx-auto flex w-full max-w-5xl flex-1 flex-col items-center justify-center px-6 py-20 md:py-28">
 
-      <main className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 flex-col items-center px-5 pb-12 pt-12 md:pt-16">
-        {/* =====================================================
-            SONIC WAVES
-        ===================================================== */}
-
-        <div className="pointer-events-none absolute left-1/2 top-[170px] h-[190px] w-[150vw] -translate-x-1/2 overflow-hidden opacity-90">
-          <SonicWave
-            color="#f59e0b"
-            secondaryColor="#38bdf8"
-            delay={0}
-          />
-
-          <SonicWave
-            color="#38bdf8"
-            secondaryColor="#34d399"
-            delay={0.8}
-            opacity={0.45}
-          />
-
-          <SonicWave
-            color="#fbbf24"
-            secondaryColor="#60a5fa"
-            delay={1.5}
-            opacity={0.25}
-          />
-        </div>
-
-        {/* =====================================================
-            HERO ICON
-        ===================================================== */}
-
+        {/* ── Label ── */}
         <motion.div
-          className="relative z-10 mb-7 flex h-[72px] w-[72px] items-center justify-center rounded-[22px] border border-amber-300/15 bg-gradient-to-br from-amber-400/[0.16] via-white/[0.045] to-transparent shadow-[0_0_70px_rgba(245,158,11,0.08)] backdrop-blur-xl"
-          initial={{ opacity: 0, y: 12, scale: 0.92 }}
-          animate={{
-            opacity: 1,
-            y: 0,
-            scale: 1,
-          }}
-          transition={{
-            duration: 0.6,
-            ease: 'easeOut',
-          }}
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="mb-6 flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.14em] text-white/30"
         >
-          <motion.div
-            className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-300 to-amber-500 text-black shadow-[0_0_35px_rgba(245,158,11,0.28)]"
-            animate={{
-              boxShadow: [
-                '0 0 25px rgba(245,158,11,0.18)',
-                '0 0 45px rgba(245,158,11,0.38)',
-                '0 0 25px rgba(245,158,11,0.18)',
-              ],
-            }}
-            transition={{
-              duration: 2.5,
-              repeat: Infinity,
-            }}
-          >
-            <Sparkles className="h-6 w-6" />
-          </motion.div>
+          <span className="h-px w-5 bg-white/20" />
+          Learning &amp; Literacy · VoiceForBharat
+          <span className="h-px w-5 bg-white/20" />
         </motion.div>
 
-        {/* =====================================================
-            HEADING
-        ===================================================== */}
-
-        <motion.div
-          className="relative z-10 max-w-4xl text-center"
-          initial={{ opacity: 0, y: 18 }}
-          animate={{
-            opacity: 1,
-            y: 0,
-          }}
-          transition={{
-            duration: 0.65,
-            delay: 0.1,
-            ease: 'easeOut',
-          }}
+        {/* ── Headline ── */}
+        <motion.h1
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.06 }}
+          className="max-w-3xl text-center text-[40px] font-semibold leading-[1.08] tracking-[-0.04em] text-white sm:text-5xl md:text-[60px]"
         >
-          <h1 className="text-[42px] font-semibold leading-[1.05] tracking-[-0.055em] text-white sm:text-5xl md:text-6xl lg:text-[64px]">
-            What would you like to{' '}
-            <span className="bg-gradient-to-r from-amber-200 via-amber-400 to-orange-300 bg-clip-text text-transparent">
-              learn?
+          Your AI tutor,{' '}
+          <span className="text-indigo-400">always there.</span>
+        </motion.h1>
+
+        {/* ── Subhead ── */}
+        <motion.p
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.45, delay: 0.13 }}
+          className="mt-5 max-w-lg text-center text-[15px] leading-7 text-white/38"
+        >
+          Ask questions, understand concepts, take live quizzes. In Telugu, Hindi, or English — Medha adapts to you.
+        </motion.p>
+
+        {/* ── Waveform visualizer ── */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.96 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.5, delay: 0.22 }}
+          className="my-12 flex w-full max-w-[480px] items-center justify-center"
+          aria-hidden
+        >
+          <div className="relative flex h-[88px] w-full items-end justify-center gap-[3px]">
+            {bars.current.map((h, i) => {
+              const barH = Math.max(3, Math.round(h * 88));
+              const alpha = hovered ? 0.35 + h * 0.65 : 0.1 + h * 0.18;
+              const color = hovered
+                ? `rgba(99,102,241,${alpha})`
+                : `rgba(255,255,255,${alpha})`;
+              return (
+                <div
+                  key={i}
+                  className="flex-1 rounded-full"
+                  style={{
+                    height: barH,
+                    minHeight: 3,
+                    maxHeight: 88,
+                    backgroundColor: color,
+                    willChange: 'height, background-color',
+                  }}
+                />
+              );
+            })}
+            {hovered && (
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-0 rounded-2xl"
+                style={{
+                  background:
+                    'radial-gradient(ellipse 60% 100% at 50% 50%, rgba(99,102,241,0.08) 0%, transparent 70%)',
+                }}
+              />
+            )}
+          </div>
+        </motion.div>
+
+        {/* ── CTA BUTTONS ── */}
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.3 }}
+          className="flex flex-wrap items-center justify-center gap-4"
+        >
+          <button
+            id="start-call-button"
+            onClick={handleStart}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
+            className="group relative flex h-12 items-center gap-2.5 overflow-hidden rounded-full bg-white px-6 text-[14px] font-semibold text-zinc-900 shadow-[0_1px_3px_rgba(0,0,0,0.3),0_6px_20px_rgba(0,0,0,0.25)] transition-all duration-150 active:scale-[0.97] hover:shadow-[0_2px_8px_rgba(0,0,0,0.4),0_8px_28px_rgba(0,0,0,0.3)]"
+          >
+            <motion.span
+              className="relative flex h-5 w-5 items-center justify-center"
+              animate={hovered ? { scale: [1, 1.15, 1] } : { scale: 1 }}
+              transition={{ duration: 0.4, repeat: hovered ? Infinity : 0 }}
+            >
+              <Mic className="h-[15px] w-[15px]" />
+            </motion.span>
+            {startButtonText || 'Start talking'}
+            <ArrowRight className="h-3.5 w-3.5 opacity-0 transition-all duration-200 group-hover:-mr-0.5 group-hover:opacity-50" />
+          </button>
+
+          <button
+            onClick={() => {
+              setIsCalling(false);
+              setIsModalOpen(true);
+            }}
+            className="group relative flex h-12 items-center gap-2.5 rounded-full border border-indigo-400/40 bg-indigo-500/10 px-6 text-[14px] font-semibold text-indigo-200 backdrop-blur-xl transition-all duration-200 hover:border-indigo-400/70 hover:bg-indigo-500/20 active:scale-[0.97]"
+          >
+            <PhoneCall className="h-[15px] w-[15px] text-indigo-400" />
+            <span>Make Phone Call</span>
+          </button>
+        </motion.div>
+
+        {/* ── Language tags ── */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.48 }}
+          className="mt-8 flex items-center gap-1.5"
+        >
+          {['English', 'తెలుగు', 'हिन्दी'].map((lang) => (
+            <span
+              key={lang}
+              className="rounded-full border border-white/[0.08] px-3 py-1 text-[11px] text-white/30 transition-colors hover:border-white/15 hover:text-white/50"
+            >
+              {lang}
             </span>
-          </h1>
-
-          <p className="mx-auto mt-5 max-w-2xl text-sm leading-6 text-white/48 sm:text-base md:text-[17px] md:leading-7">
-            Talk naturally with Medha AI. Ask questions,
-            understand concepts, practice English, or explore
-            something new.
-          </p>
+          ))}
         </motion.div>
 
-        {/* =====================================================
-            START BUTTON
-        ===================================================== */}
-
+        {/* ═══ CAPABILITIES STRIP ══════════════════════════════════════════ */}
         <motion.div
-          className="relative z-20 mt-9"
-          initial={{
-            opacity: 0,
-            scale: 0.94,
-          }}
-          animate={{
-            opacity: 1,
-            scale: 1,
-          }}
-          transition={{
-            duration: 0.5,
-            delay: 0.25,
-          }}
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.55, duration: 0.5 }}
+          className="mt-24 w-full"
         >
-          {/* button glow */}
-          <motion.div
-            className="absolute inset-0 rounded-full bg-amber-400/20 blur-2xl"
-            animate={{
-              opacity: [0.25, 0.55, 0.25],
-              scale: [0.9, 1.08, 0.9],
-            }}
-            transition={{
-              duration: 2.4,
-              repeat: Infinity,
-            }}
-          />
+          <div className="mb-10 flex items-center gap-4">
+            <div className="h-px flex-1 bg-white/[0.06]" />
+            <span className="text-[10px] uppercase tracking-[0.2em] text-white/20">
+              What Medha can do
+            </span>
+            <div className="h-px flex-1 bg-white/[0.06]" />
+          </div>
 
-          <Button
-            size="lg"
-            onClick={onStartCall}
-            className="group relative h-14 rounded-full border border-amber-200/20 bg-gradient-to-r from-amber-200 via-amber-300 to-orange-300 px-8 text-[15px] font-semibold text-[#17120a] shadow-[0_10px_50px_rgba(245,158,11,0.16)] transition-all duration-300 hover:scale-[1.045] hover:shadow-[0_12px_60px_rgba(245,158,11,0.3)]"
-          >
-            <Mic className="mr-2.5 h-[18px] w-[18px] transition-transform duration-300 group-hover:scale-110" />
-
-            {startButtonText || 'Start Learning'}
-
-            <ArrowRight className="ml-2 h-4 w-4 opacity-50 transition-all duration-300 group-hover:translate-x-1 group-hover:opacity-100" />
-          </Button>
-        </motion.div>
-
-        {/* =====================================================
-            FEATURE CARDS
-        ===================================================== */}
-
-        <div className="relative z-20 mt-16 grid w-full max-w-[900px] grid-cols-1 gap-3 sm:grid-cols-3">
-          <FeatureCard
-            icon={<Brain className="h-[19px] w-[19px]" />}
-            title="Learn"
-            description="Understand difficult concepts with ease"
-            color="amber"
-            delay={0.35}
-          />
-
-          <FeatureCard
-            icon={<BookOpen className="h-[19px] w-[19px]" />}
-            title="Practice"
-            description="Test yourself with questions & quizzes"
-            color="blue"
-            delay={0.45}
-          />
-
-          <FeatureCard
-            icon={<Languages className="h-[19px] w-[19px]" />}
-            title="Explore"
-            description="Learn across languages and topics"
-            color="green"
-            delay={0.55}
-          />
-        </div>
-
-        {/* =====================================================
-            LANGUAGES
-        ===================================================== */}
-
-        <motion.div
-          className="relative z-10 mt-8 flex flex-wrap items-center justify-center gap-2.5 text-xs"
-          initial={{
-            opacity: 0,
-          }}
-          animate={{
-            opacity: 1,
-          }}
-          transition={{
-            delay: 0.7,
-          }}
-        >
-          <span className="text-white/25">
-            Try speaking in
-          </span>
-
-          <button className="font-medium text-amber-300 transition-colors hover:text-amber-200">
-            English
-          </button>
-
-          <span className="text-white/15">•</span>
-
-          <button className="text-white/55 transition-colors hover:text-cyan-300">
-            తెలుగు
-          </button>
-
-          <span className="text-white/15">•</span>
-
-          <button className="text-white/55 transition-colors hover:text-emerald-300">
-            हिन्दी
-          </button>
+          <div className="grid grid-cols-1 gap-px sm:grid-cols-3">
+            <Capability
+              number="01"
+              title="Explain anything"
+              body="Ask about photosynthesis, recursion, the French Revolution — explained in plain language, then dig deeper."
+              isFirst
+            />
+            <Capability
+              number="02"
+              title="Live quiz & practice"
+              body="Medha fetches real questions from open databases, matched to your level. Instant feedback."
+            />
+            <Capability
+              number="03"
+              title="Remembers you"
+              body="Your learning level, topics, common mistakes — stored and reused automatically across sessions."
+              isLast
+            />
+          </div>
         </motion.div>
       </main>
 
-      {/* =========================================================
-          FOOTER
-      ========================================================= */}
-
-      <footer className="relative z-20 flex items-center justify-center pb-5">
-        <p className="text-[11px] tracking-wide text-white/20">
-          Medha AI
-          <span className="mx-2 text-white/10">
-            •
-          </span>
-          Learning & Literacy
-        </p>
+      {/* ══ FOOTER ═════════════════════════════════════════════════════════ */}
+      <footer className="relative z-10 border-t border-white/[0.05] px-6 py-5 md:px-10">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4">
+          <p className="text-[11px] text-white/18">
+            Medha AI · Learning &amp; Literacy · 10 Days of Voice Agents
+          </p>
+          <div className="flex items-center gap-1.5 text-[11px] text-white/18">
+            <span>Powered by</span>
+            <span className="font-medium text-indigo-400/60">Murf Falcon TTS</span>
+            <span>·</span>
+            <span className="font-medium text-white/25">LiveKit Agents</span>
+          </div>
+        </div>
       </footer>
 
-      {/* =========================================================
-          THEME BUTTON
-      ========================================================= */}
+      {/* ══ SIMPLE CLEAN PHONE CALL MODAL ═════════════════════════════════ */}
+      <AnimatePresence>
+        {isModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={handleCancelCall}
+              className="absolute inset-0 bg-black/80 backdrop-blur-md"
+            />
 
-      <button
-        aria-label="Theme"
-        className="absolute bottom-5 left-5 z-30 flex h-10 w-10 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.025] text-white/55 backdrop-blur-xl transition-all duration-200 hover:border-amber-300/20 hover:bg-amber-300/[0.06] hover:text-amber-300"
-      >
-        <span className="text-lg">☼</span>
-      </button>
+            {/* Modal Box */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: 12 }}
+              className="relative z-10 w-full max-w-sm overflow-hidden rounded-2xl border border-white/10 bg-[#0d0d12] p-6 shadow-2xl"
+            >
+              <button
+                onClick={handleCancelCall}
+                className="absolute right-4 top-4 rounded-full p-1 text-white/40 transition-colors hover:bg-white/10 hover:text-white"
+              >
+                <X className="h-4 w-4" />
+              </button>
+
+              {!isCalling ? (
+                /* STEP 1: ENTER PHONE NUMBER */
+                <div>
+                  <div className="mb-5 flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-indigo-500/30 bg-indigo-500/10 text-indigo-400">
+                      <PhoneCall className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-semibold text-white">Make Phone Call</h3>
+                      <p className="text-xs text-white/40">Enter phone number to initiate call</p>
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleStartPhoneCall} className="space-y-4">
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-white/60">Phone Number</label>
+                      <input
+                        type="tel"
+                        required
+                        value={phoneNum}
+                        onChange={(e) => setPhoneNum(e.target.value)}
+                        placeholder="+91 93466 98489"
+                        className="w-full rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-indigo-500/50"
+                      />
+                    </div>
+
+                    <div className="pt-2">
+                      <button
+                        type="submit"
+                        className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white transition-all hover:bg-indigo-500 active:scale-[0.98]"
+                      >
+                        <Phone className="h-4 w-4" />
+                        <span>Call Now</span>
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              ) : (
+                /* STEP 2: DISPLAY CALLING SCREEN */
+                <div className="flex flex-col items-center py-6 text-center">
+                  <motion.div
+                    animate={{ scale: [1, 1.2, 1] }}
+                    transition={{ duration: 1.2, repeat: Infinity }}
+                    className="mb-4 flex h-20 w-20 items-center justify-center rounded-full border border-indigo-500/30 bg-indigo-500/20 text-indigo-400 shadow-[0_0_40px_rgba(99,102,241,0.4)]"
+                  >
+                    <Phone className="h-9 w-9" />
+                  </motion.div>
+
+                  <span className="text-xs font-medium uppercase tracking-widest text-indigo-400 animate-pulse">
+                    Calling...
+                  </span>
+                  <h3 className="mt-2 text-xl font-bold text-white">{phoneNum}</h3>
+                  <p className="mt-1 text-xs text-white/40">Connecting Medha AI Voice Companion</p>
+
+                  <div className="mt-6 w-full pt-2">
+                    <button
+                      onClick={handleCancelCall}
+                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-red-600/90 py-3 text-sm font-semibold text-white transition-all hover:bg-red-600 active:scale-[0.98]"
+                    >
+                      <X className="h-4 w-4" />
+                      <span>End Call</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
 
-/* =============================================================
-   FEATURE CARD
-============================================================= */
-
-function FeatureCard({
-  icon,
+function Capability({
+  number,
   title,
-  description,
-  color,
-  delay,
+  body,
+  isFirst,
+  isLast,
 }: {
-  icon: React.ReactNode;
+  number: string;
   title: string;
-  description: string;
-  color: 'amber' | 'blue' | 'green';
-  delay: number;
+  body: string;
+  isFirst?: boolean;
+  isLast?: boolean;
 }) {
-  const colors = {
-    amber: {
-      border: 'hover:border-amber-400/30',
-      icon: 'border-amber-300/10 bg-amber-300/[0.08] text-amber-300',
-      glow: 'group-hover:bg-amber-400/[0.035]',
-      arrow:
-        'border-amber-300/30 text-amber-300 group-hover:bg-amber-300/10',
-    },
-
-    blue: {
-      border: 'hover:border-blue-400/30',
-      icon: 'border-blue-300/10 bg-blue-300/[0.08] text-blue-300',
-      glow: 'group-hover:bg-blue-400/[0.035]',
-      arrow:
-        'border-blue-300/30 text-blue-300 group-hover:bg-blue-300/10',
-    },
-
-    green: {
-      border: 'hover:border-emerald-400/30',
-      icon: 'border-emerald-300/10 bg-emerald-300/[0.08] text-emerald-300',
-      glow: 'group-hover:bg-emerald-400/[0.035]',
-      arrow:
-        'border-emerald-300/30 text-emerald-300 group-hover:bg-emerald-300/10',
-    },
-  };
-
-  const theme = colors[color];
-
   return (
-    <motion.div
-      initial={{
-        opacity: 0,
-        y: 18,
-      }}
-      animate={{
-        opacity: 1,
-        y: 0,
-      }}
-      transition={{
-        duration: 0.5,
-        delay,
-      }}
-      whileHover={{
-        y: -5,
-      }}
-      className={`group relative overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.018] p-5 backdrop-blur-xl transition-all duration-300 ${theme.border}`}
+    <div
+      className={[
+        'group border border-white/[0.06] bg-[#09090b] p-6 transition-colors duration-200 hover:bg-white/[0.02]',
+        isFirst ? 'rounded-t-xl sm:rounded-t-none sm:rounded-l-xl' : '',
+        isLast ? 'rounded-b-xl sm:rounded-b-none sm:rounded-r-xl' : '',
+      ].join(' ')}
     >
-      {/* Hover glow */}
-      <div
-        className={`absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100 ${theme.glow}`}
-      />
-
-      <div className="relative z-10">
-        <div className="flex items-start justify-between">
-          <div
-            className={`flex h-11 w-11 items-center justify-center rounded-xl border ${theme.icon}`}
-          >
-            {icon}
-          </div>
-
-          <div
-            className={`flex h-8 w-8 items-center justify-center rounded-full border text-sm opacity-60 transition-all duration-300 group-hover:translate-x-1 group-hover:opacity-100 ${theme.arrow}`}
-          >
-            <ArrowRight className="h-3.5 w-3.5" />
-          </div>
-        </div>
-
-        <div className="mt-5 text-[15px] font-semibold text-white/90">
-          {title}
-        </div>
-
-        <div className="mt-1.5 max-w-[220px] text-xs leading-5 text-white/40">
-          {description}
-        </div>
+      <div className="mb-4 font-mono text-[10px] font-semibold tracking-widest" style={{ color: 'rgba(255,255,255,0.18)' }}>
+        {number}
       </div>
-    </motion.div>
+      <h3 className="mb-2 text-[14px] font-semibold" style={{ color: 'rgba(255,255,255,0.80)' }}>{title}</h3>
+      <p className="text-[12px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.32)' }}>{body}</p>
+    </div>
   );
 }
 
-/* =============================================================
-   SONIC WAVE
-============================================================= */
-
-function SonicWave({
-  color,
-  secondaryColor,
-  delay,
-  opacity = 0.7,
-}: {
-  color: string;
-  secondaryColor: string;
-  delay: number;
-  opacity?: number;
-}) {
+function LiveDot() {
   return (
-    <svg
-      viewBox="0 0 1200 180"
-      preserveAspectRatio="none"
-      className="absolute inset-0 h-full w-full"
-      style={{
-        opacity,
-      }}
-    >
-      <defs>
-        <linearGradient
-          id={`wave-${delay}`}
-          x1="0%"
-          y1="0%"
-          x2="100%"
-          y2="0%"
-        >
-          <stop
-            offset="0%"
-            stopColor={color}
-            stopOpacity="0"
-          />
-
-          <stop
-            offset="20%"
-            stopColor={color}
-            stopOpacity="0.65"
-          />
-
-          <stop
-            offset="50%"
-            stopColor="#ffffff"
-            stopOpacity="0.8"
-          />
-
-          <stop
-            offset="75%"
-            stopColor={secondaryColor}
-            stopOpacity="0.6"
-          />
-
-          <stop
-            offset="100%"
-            stopColor={secondaryColor}
-            stopOpacity="0"
-          />
-        </linearGradient>
-
-        <filter
-          id={`blur-${delay}`}
-          x="-20%"
-          y="-100%"
-          width="140%"
-          height="300%"
-        >
-          <feGaussianBlur
-            stdDeviation="1.8"
-          />
-        </filter>
-      </defs>
-
-      {[0, 1, 2, 3].map((index) => (
-        <motion.path
-          key={index}
-          d={`
-            M -50 90
-            C 80 ${65 + index * 6},
-              150 ${115 - index * 5},
-              280 90
-            S 470 ${65 + index * 7},
-              600 90
-            S 820 ${115 - index * 5},
-              940 90
-            S 1120 ${65 + index * 6},
-              1250 90
-          `}
-          fill="none"
-          stroke={`url(#wave-${delay})`}
-          strokeWidth={index === 1 ? 1.5 : 1}
-          filter={`url(#blur-${delay})`}
-          animate={{
-            d: [
-              `
-                M -50 90
-                C 80 ${65 + index * 6},
-                  150 ${115 - index * 5},
-                  280 90
-                S 470 ${65 + index * 7},
-                  600 90
-                S 820 ${115 - index * 5},
-                  940 90
-                S 1120 ${65 + index * 6},
-                  1250 90
-              `,
-              `
-                M -50 90
-                C 80 ${110 - index * 4},
-                  170 ${55 + index * 5},
-                  300 90
-                S 500 ${118 - index * 6},
-                  620 90
-                S 800 ${55 + index * 5},
-                  950 90
-                S 1120 ${110 - index * 4},
-                  1250 90
-              `,
-              `
-                M -50 90
-                C 80 ${65 + index * 6},
-                  150 ${115 - index * 5},
-                  280 90
-                S 470 ${65 + index * 7},
-                  600 90
-                S 820 ${115 - index * 5},
-                  940 90
-                S 1120 ${65 + index * 6},
-                  1250 90
-              `,
-            ],
-            opacity: [0.35, 0.8, 0.35],
-          }}
-          transition={{
-            duration: 4 + index * 0.6,
-            delay: delay + index * 0.15,
-            repeat: Infinity,
-            ease: 'easeInOut',
-          }}
-        />
-      ))}
-    </svg>
-  );
-}
-
-/* =============================================================
-   FLOATING PARTICLE
-============================================================= */
-
-function FloatingParticle({
-  className,
-  delay,
-}: {
-  className: string;
-  delay: number;
-}) {
-  return (
-    <motion.span
-      className={`absolute h-1 w-1 rounded-full bg-amber-300/40 ${className}`}
-      animate={{
-        y: [0, -18, 0],
-        x: [0, 5, 0],
-        opacity: [0.15, 0.65, 0.15],
-      }}
-      transition={{
-        duration: 4,
-        delay,
-        repeat: Infinity,
-        ease: 'easeInOut',
-      }}
-    />
+    <div className="flex items-center gap-1.5 rounded-full border border-white/[0.07] bg-white/[0.03] px-2.5 py-1">
+      <motion.span
+        className="h-1.5 w-1.5 rounded-full bg-emerald-500"
+        animate={{ opacity: [0.4, 1, 0.4] }}
+        transition={{ duration: 1.8, repeat: Infinity }}
+      />
+      <span className="text-[11px] text-white/35">Live</span>
+    </div>
   );
 }

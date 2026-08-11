@@ -201,9 +201,57 @@ The project includes an eval and unit test suite:
 uv run pytest
 ```
 
-Tests are located in [`tests/test_agent.py`](tests/test_agent.py) and [`tests/test_tools.py`](tests/test_tools.py).
+Tests are located in [`tests/test_agent.py`](tests/test_agent.py), [`tests/test_tools.py`](tests/test_tools.py), and [`tests/test_outbound.py`](tests/test_outbound.py).
 
 To run tests in CI, you'll need to add `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` as repository secrets.
+
+## Outbound Telephony & Calling (Day 6)
+
+Medha AI supports outbound phone calling via **Twilio** and **LiveKit SIP Integration** for automated daily practice calls and quiz nudges.
+
+### Required Environment Variables (`backend/.env.local`)
+
+```env
+# Twilio Telephony Credentials
+TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_AUTH_TOKEN=your_twilio_auth_token
+TWILIO_FROM_NUMBER=+1234567890
+
+# LiveKit Transport & SIP Credentials
+LIVEKIT_URL=wss://your-project.livekit.cloud
+LIVEKIT_API_KEY=your_livekit_api_key
+LIVEKIT_API_SECRET=your_livekit_api_secret
+LIVEKIT_SIP_TRUNK_ID=ST_your_sip_trunk_id  # Optional if using direct LiveKit SIP Trunking
+```
+
+### Running Outbound Calls
+
+#### 1. Simulated Outbound Call (CLI Test)
+To test retry rules, outcome logging, or greeting mechanics without incurring telephony costs:
+```bash
+python -m backend.src.outbound_call --to "+919346698489" --name "Murali" --topic "Machine Learning" --simulate-outcome completed
+```
+*Expected*: `dispatch_status: "simulated"`, `outcome: "completed"`.
+
+#### 2. Real Outbound Phone Call (Twilio Dispatch)
+To place an actual phone call to a target phone number:
+```bash
+python -m backend.src.outbound_call --to "+919346698489" --name "Murali" --topic "Machine Learning"
+```
+*Expected*:
+- If Twilio credentials are configured: `dispatch_status: "dispatched_twilio"`, Twilio places the call, and Medha AI answers via LiveKit + Murf Falcon TTS when answered.
+- If credentials are missing: Prints explicit error detailing missing variables (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`).
+
+### Outbound Call Flow & Opt-Out Handling
+
+1. **Mandatory 3-Part Opening Greeting**:
+   - Who is calling: *"Hello! I am Medha AI, your AI Voice Learning Companion from VoiceForBharat."*
+   - Why: *"I am calling for your scheduled daily practice call to review Machine Learning and take a quick quiz."*
+   - How to stop: *"If you ever want to end this call or stop receiving daily practice calls, just say 'stop' or 'unsubscribe'."*
+2. **Opt-Out Preference Persistence**:
+   - When a caller requests to unsubscribe, Medha AI calls `unsubscribe_outbound_calls`, which sets `opted_out = True` in `medha_memory.db`.
+   - Subsequent outbound calls to that user ID are automatically suppressed (`OPT_OUT_SUPPRESSED`).
+
 
 ## Deployment
 

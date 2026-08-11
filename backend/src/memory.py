@@ -1,3 +1,4 @@
+import contextlib
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,10 +23,16 @@ def init_database():
                 current_level TEXT,
                 topics_covered TEXT,
                 common_mistakes TEXT,
-                last_interaction TEXT
+                last_interaction TEXT,
+                opted_out INTEGER DEFAULT 0
             )
             """
         )
+        # Migration for existing database tables missing opted_out
+        with contextlib.suppress(sqlite3.OperationalError):
+            connection.execute(
+                "ALTER TABLE users ADD COLUMN opted_out INTEGER DEFAULT 0"
+            )
         connection.commit()
 
 
@@ -40,7 +47,8 @@ def get_user(user_id: str):
                 current_level,
                 topics_covered,
                 common_mistakes,
-                last_interaction
+                last_interaction,
+                opted_out
             FROM users
             WHERE user_id = ?
             """,
@@ -50,7 +58,9 @@ def get_user(user_id: str):
         if row is None:
             return None
 
-        return dict(row)
+        data = dict(row)
+        data["opted_out"] = bool(data.get("opted_out", 0))
+        return data
 
 
 def save_user(
@@ -60,8 +70,10 @@ def save_user(
     current_level: str | None = None,
     topics_covered: str | None = None,
     common_mistakes: str | None = None,
+    opted_out: bool | None = None,
 ):
     now = datetime.now(timezone.utc).isoformat()
+    opt_val = 1 if opted_out is True else (0 if opted_out is False else None)
 
     with get_connection() as connection:
         existing = connection.execute(
@@ -79,6 +91,7 @@ def save_user(
                     current_level = COALESCE(?, current_level),
                     topics_covered = COALESCE(?, topics_covered),
                     common_mistakes = COALESCE(?, common_mistakes),
+                    opted_out = COALESCE(?, opted_out),
                     last_interaction = ?
                 WHERE user_id = ?
                 """,
@@ -88,6 +101,7 @@ def save_user(
                     current_level,
                     topics_covered,
                     common_mistakes,
+                    opt_val,
                     now,
                     user_id,
                 ),
@@ -102,9 +116,10 @@ def save_user(
                     current_level,
                     topics_covered,
                     common_mistakes,
-                    last_interaction
+                    last_interaction,
+                    opted_out
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     user_id,
@@ -114,7 +129,13 @@ def save_user(
                     topics_covered,
                     common_mistakes,
                     now,
+                    opt_val if opt_val is not None else 0,
                 ),
             )
 
         connection.commit()
+
+
+def set_opt_out_status(user_id: str, opted_out: bool = True):
+    """Set the caller's opt-out status for automated outbound calls."""
+    save_user(user_id=user_id, opted_out=opted_out)
