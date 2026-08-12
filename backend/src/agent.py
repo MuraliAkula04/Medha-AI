@@ -618,56 +618,9 @@ async def my_agent(ctx: JobContext):
         "room": ctx.room.name,
     }
 
-    # Connect to the LiveKit room first so the participant
-    # information is available.
-    await ctx.connect()
-
-    # Get the caller's persistent LiveKit participant identity.
-    participant = next(
-        iter(ctx.room.remote_participants.values()),
-        None,
-    )
-
-    if participant is None:
-        logger.warning("No remote participant found.")
-
-        user_id = f"anonymous_{ctx.room.name}"
-
-    else:
-        user_id = participant.identity
-
-    logger.info(
-        "Medha caller ID: %s",
-        user_id,
-    )
-
-    # Set up the voice AI pipeline.
-    session = AgentSession(
-        # Speech-to-text
-        stt=deepgram.STT(
-            model="nova-3",
-        ),
-        # Large Language Model
-        llm=google.LLM(
-            model="gemini-3.5-flash-lite",
-        ),
-        # Text-to-speech
-        tts=murf.TTS(
-            voice="Pooja",
-            locale="en-IN",
-            style="Conversation",
-            tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
-            text_pacing=True,
-        ),
-        # Turn detection
-        turn_detection=MultilingualModel(),
-        # Voice activity detection
-        vad=ctx.proc.userdata["vad"],
-        # Generate responses before the user completely finishes
-        preemptive_generation=True,
-    )
-
-    # Check room metadata or name to determine if this is an outbound call
+    # Determine whether this is an outbound call before looking for the
+    # SIP participant. The SIP participant can join shortly after the room
+    # is created, so wait for it instead of checking the room only once.
     metadata = {}
     if ctx.room.metadata:
         with contextlib.suppress(Exception):
@@ -676,44 +629,112 @@ async def my_agent(ctx: JobContext):
     is_outbound = (
         metadata.get("is_outbound", False)
         or ctx.room.name.startswith("outbound-")
-        or (
-            participant and participant.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP
-        )
     )
 
-    # Start the session with the memory-enabled assistant.
-    session_task = asyncio.create_task(
-        session.start(
-            agent=Assistant(
-                user_id=user_id,
-            ),
-            room=ctx.room,
-            room_options=room_io.RoomOptions(
-                audio_input=room_io.AudioInputOptions(
-                    noise_cancellation=lambda params: (
-                        noise_cancellation.BVCTelephony()
-                        if params.participant.kind
-                        == rtc.ParticipantKind.PARTICIPANT_KIND_SIP
-                        else noise_cancellation.BVC()
-                    ),
+    # The job must connect to the LiveKit room before waiting for
+    # the SIP participant. Without ctx.connect(), wait_for_participant()
+    # can fail with "room is not connected".
+    logger.info("Connecting agent to LiveKit room: %s", ctx.room.name)
+    await ctx.connect()
+
+    logger.info("Agent connected to room: %s", ctx.room.name)
+
+    if is_outbound:
+        logger.info("Outbound room detected: %s", ctx.room.name)
+        logger.info("Waiting for SIP participant to join...")
+
+        participant = await ctx.wait_for_participant()
+
+        logger.info(
+            "SIP participant joined: identity=%s kind=%s",
+            participant.identity,
+            participant.kind,
+        )
+    else:
+        # Inbound calls normally already have a remote participant.
+        participant = next(
+            iter(ctx.room.remote_participants.values()),
+            None,
+        )
+
+    if participant is None:
+        logger.warning("No remote participant found.")
+        user_id = f"anonymous_{ctx.room.name}"
+    else:
+        user_id = participant.identity
+
+    logger.info("Medha caller ID: %s", user_id)
+
+    # Set up the voice AI pipeline.
+    session = AgentSession(
+        stt=deepgram.STT(
+            model="nova-3",
+        ),
+        llm=google.LLM(
+            model="gemini-3.5-flash-lite",
+        ),
+        tts=murf.TTS(
+            voice="Pooja",
+            locale="en-IN",
+            style="Conversation",
+            tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
+            text_pacing=True,
+        ),
+        turn_detection=MultilingualModel(),
+        vad=ctx.proc.userdata["vad"],
+        preemptive_generation=True,
+    )
+
+    # Start the session only after the outbound SIP participant has joined.
+    # This prevents the TTS pipeline from being started before the phone
+    # participant is actually connected to the room.
+    logger.info("Starting AgentSession for user %s", user_id)
+
+    await session.start(
+        agent=Assistant(
+            user_id=user_id,
+        ),
+        room=ctx.room,
+        room_options=room_io.RoomOptions(
+            audio_input=room_io.AudioInputOptions(
+                noise_cancellation=lambda params: (
+                    noise_cancellation.BVCTelephony()
+                    if params.participant.kind
+                    == rtc.ParticipantKind.PARTICIPANT_KIND_SIP
+                    else noise_cancellation.BVC()
                 ),
             ),
-        )
+        ),
     )
 
-    # If this is an outbound call, greet the user immediately with the mandatory 3-part greeting
+    # Explicitly speak first on outbound calls.
     if is_outbound:
-        topic_info = metadata.get("topic", "today's revision topic")
-        greeting_text = (
-            "Hello! I am Medha AI, your AI Voice Learning Companion from VoiceForBharat. "
-            f"I am calling for your scheduled daily practice call to review {topic_info} and take a quick quiz. "
-            "If you ever want to end this call or stop receiving daily practice calls, just say 'stop' or 'unsubscribe'."
+        topic_info = metadata.get(
+            "topic",
+            "today's revision topic",
         )
-        # Give session.start a brief moment to finish room binding
-        await asyncio.sleep(0.5)
-        await session.say(greeting_text)
 
-    await session_task
+        greeting_text = (
+            "Hello! I am Medha AI, your AI Voice Learning Companion "
+            "from VoiceForBharat. "
+            f"I am calling for your scheduled daily practice call "
+            f"to review {topic_info} and take a quick quiz. "
+            "If you ever want to end this call or stop receiving "
+            "daily practice calls, just say 'stop' or 'unsubscribe'."
+        )
+
+        logger.info(
+            "Speaking outbound greeting to %s",
+            user_id,
+        )
+
+        await session.say(
+            greeting_text,
+            allow_interruptions=True,
+        )
+
+    # Keep the agent job alive for the duration of the call.
+    await asyncio.Event().wait()
 
 
 if __name__ == "__main__":
