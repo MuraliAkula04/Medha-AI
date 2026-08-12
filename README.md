@@ -162,11 +162,25 @@ Track:
 - 🕒 **Timestamp Reporting**: All fetched tool responses include `as_of_date` timestamps so Medha AI states when the live data was retrieved.
 - 🖥️ **UI Data Push**: Emits real-time JSON data payloads over LiveKit room data channels for visual UI display.
 
+### ✅ Day 6 – Make it Real (Outbound Calls & Opt-Out)
+
+- 📞 **Outbound SIP Integration**: Added SIP dispatch support for automated daily practice and review calls.
+- 🗣️ **Standardized Outbound Greeting**: Implemented a mandatory 3-part greeting identifying Medha AI, stating the purpose of the scheduled daily study session, and providing opt-out instructions.
+- 🛑 **Outbound Opt-Out Tool**: Built `unsubscribe_outbound_calls` tool to persist caller opt-out status in SQLite database and gracefully stop automated daily calls.
+
+### ✅ Day 7 – Know When to Ask for Human Help
+
+- 🚨 **Defined Escalation Triggers**: Configured Medha AI to recognize student emotional distress (*"I give up"*, *"I can't do this anymore"*) and explicit human teacher consultation / grade dispute requests.
+- ✋ **Permission Flow (*Ask Before Sharing*)**: Enforced rule where Medha AI must explain what details will be sent and receive explicit verbal consent before creating any human ticket.
+- 🔒 **PII Scrubbing**: Built `sanitize_pii` utility to automatically redact sensitive information (passwords, OTPs, PINs, bank accounts, card numbers) from request summaries.
+- 🎫 **Reference ID & Honest ETA**: Generates unique ticket reference IDs (e.g. `ESC-2026-5197`) and recites clear, honest next steps without false promises of instant replies.
+- 📊 **Human Escalation Dashboard**: Built real-time Next.js UI dashboard (`/api/escalations` + LiveKit room data channel) to track, filter, and resolve open escalation tickets.
+- 🧪 **Automated & LLM-Judged Test Suite**: Written 16 comprehensive unit & LLM-as-judge tests in `pytest` verifying both escalation and normal session paths.
+
 ### 🔜 Upcoming
 
-- Premium UI & Visual Cards
-- Learning Dashboard
-- Progress Analytics
+- Learning Progress Analytics & Student Report Cards
+- Multi-channel Notification Integrations (WhatsApp / SMS alerts)
 
 ---
 

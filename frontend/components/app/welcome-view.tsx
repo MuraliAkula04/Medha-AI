@@ -1,8 +1,9 @@
 'use client';
 
-import { ArrowRight, Mic, Phone, PhoneCall, X } from 'lucide-react';
-import { motion, useAnimationFrame, AnimatePresence } from 'motion/react';
-import { useRef, useState, useCallback } from 'react';
+import { useCallback, useRef, useState } from 'react';
+import { ArrowRight, Mic, Phone, PhoneCall, UserCheck, X } from 'lucide-react';
+import { AnimatePresence, motion, useAnimationFrame } from 'motion/react';
+import { EscalationDashboard } from '@/components/app/escalation-dashboard';
 
 interface WelcomeViewProps {
   startButtonText: string;
@@ -14,7 +15,7 @@ const BAR_COUNT = 48;
 function useWaveform(active: boolean) {
   const bars = useRef<number[]>(Array.from({ length: BAR_COUNT }, () => 0.08));
   const phases = useRef<number[]>(
-    Array.from({ length: BAR_COUNT }, (_, i) => (i / BAR_COUNT) * Math.PI * 2),
+    Array.from({ length: BAR_COUNT }, (_, i) => (i / BAR_COUNT) * Math.PI * 2)
   );
   const [, forceUpdate] = useState(0);
 
@@ -47,6 +48,7 @@ export const WelcomeView = ({
 
   // Phone Call Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [showEscalationsModal, setShowEscalationsModal] = useState(false);
   const [phoneNum, setPhoneNum] = useState('+91 93466 98489');
   const [isCalling, setIsCalling] = useState(false);
 
@@ -102,27 +104,26 @@ export const WelcomeView = ({
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-500/10 ring-1 ring-indigo-500/20">
             <Mic className="h-[14px] w-[14px] text-indigo-400" />
           </div>
-          <span className="text-[14px] font-semibold tracking-tight text-white/90">
-            Medha AI
-          </span>
+          <span className="text-[14px] font-semibold tracking-tight text-white/90">Medha AI</span>
           <span className="ml-0.5 rounded-full bg-white/[0.05] px-2 py-0.5 text-[10px] font-medium tracking-wide text-white/30 ring-1 ring-white/[0.07]">
             BETA
           </span>
         </div>
 
         <nav className="hidden items-center gap-6 text-[13px] text-white/40 sm:flex">
-          <span className="cursor-default transition-colors hover:text-white/70">
-            How it works
-          </span>
-          <span className="cursor-default transition-colors hover:text-white/70">
-            Languages
-          </span>
-          <span className="cursor-default transition-colors hover:text-white/70">
-            About
-          </span>
+          <span className="cursor-default transition-colors hover:text-white/70">How it works</span>
+          <span className="cursor-default transition-colors hover:text-white/70">Languages</span>
+          <span className="cursor-default transition-colors hover:text-white/70">About</span>
         </nav>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowEscalationsModal(true)}
+            className="flex items-center gap-1.5 rounded-full border border-purple-500/30 bg-purple-500/10 px-3.5 py-1 text-[11px] font-medium text-purple-300 transition-all hover:border-purple-500/50 hover:bg-purple-500/20"
+          >
+            <UserCheck className="h-3 w-3 text-purple-400" />
+            <span>Human Escalations</span>
+          </button>
           <button
             onClick={() => {
               setIsCalling(false);
@@ -139,13 +140,12 @@ export const WelcomeView = ({
 
       {/* ══ HERO ═══════════════════════════════════════════════════════════ */}
       <main className="relative z-10 mx-auto flex w-full max-w-5xl flex-1 flex-col items-center justify-center px-6 py-20 md:py-28">
-
         {/* ── Label ── */}
         <motion.div
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
-          className="mb-6 flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.14em] text-white/30"
+          className="mb-6 flex items-center gap-2 text-[11px] font-medium tracking-[0.14em] text-white/30 uppercase"
         >
           <span className="h-px w-5 bg-white/20" />
           Learning &amp; Literacy · VoiceForBharat
@@ -157,10 +157,9 @@ export const WelcomeView = ({
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.06 }}
-          className="max-w-3xl text-center text-[40px] font-semibold leading-[1.08] tracking-[-0.04em] text-white sm:text-5xl md:text-[60px]"
+          className="max-w-3xl text-center text-[40px] leading-[1.08] font-semibold tracking-[-0.04em] text-white sm:text-5xl md:text-[60px]"
         >
-          Your AI tutor,{' '}
-          <span className="text-indigo-400">always there.</span>
+          Your AI tutor, <span className="text-indigo-400">always there.</span>
         </motion.h1>
 
         {/* ── Subhead ── */}
@@ -170,7 +169,8 @@ export const WelcomeView = ({
           transition={{ duration: 0.45, delay: 0.13 }}
           className="mt-5 max-w-lg text-center text-[15px] leading-7 text-white/38"
         >
-          Ask questions, understand concepts, take live quizzes. In Telugu, Hindi, or English — Medha adapts to you.
+          Ask questions, understand concepts, take live quizzes. In Telugu, Hindi, or English —
+          Medha adapts to you.
         </motion.p>
 
         {/* ── Waveform visualizer ── */}
@@ -185,9 +185,7 @@ export const WelcomeView = ({
             {bars.current.map((h, i) => {
               const barH = Math.max(3, Math.round(h * 88));
               const alpha = hovered ? 0.35 + h * 0.65 : 0.1 + h * 0.18;
-              const color = hovered
-                ? `rgba(99,102,241,${alpha})`
-                : `rgba(255,255,255,${alpha})`;
+              const color = hovered ? `rgba(99,102,241,${alpha})` : `rgba(255,255,255,${alpha})`;
               return (
                 <div
                   key={i}
@@ -227,7 +225,7 @@ export const WelcomeView = ({
             onClick={handleStart}
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
-            className="group relative flex h-12 items-center gap-2.5 overflow-hidden rounded-full bg-white px-6 text-[14px] font-semibold text-zinc-900 shadow-[0_1px_3px_rgba(0,0,0,0.3),0_6px_20px_rgba(0,0,0,0.25)] transition-all duration-150 active:scale-[0.97] hover:shadow-[0_2px_8px_rgba(0,0,0,0.4),0_8px_28px_rgba(0,0,0,0.3)]"
+            className="group relative flex h-12 items-center gap-2.5 overflow-hidden rounded-full bg-white px-6 text-[14px] font-semibold text-zinc-900 shadow-[0_1px_3px_rgba(0,0,0,0.3),0_6px_20px_rgba(0,0,0,0.25)] transition-all duration-150 hover:shadow-[0_2px_8px_rgba(0,0,0,0.4),0_8px_28px_rgba(0,0,0,0.3)] active:scale-[0.97]"
           >
             <motion.span
               className="relative flex h-5 w-5 items-center justify-center"
@@ -278,7 +276,7 @@ export const WelcomeView = ({
         >
           <div className="mb-10 flex items-center gap-4">
             <div className="h-px flex-1 bg-white/[0.06]" />
-            <span className="text-[10px] uppercase tracking-[0.2em] text-white/20">
+            <span className="text-[10px] tracking-[0.2em] text-white/20 uppercase">
               What Medha can do
             </span>
             <div className="h-px flex-1 bg-white/[0.06]" />
@@ -343,7 +341,7 @@ export const WelcomeView = ({
             >
               <button
                 onClick={handleCancelCall}
-                className="absolute right-4 top-4 rounded-full p-1 text-white/40 transition-colors hover:bg-white/10 hover:text-white"
+                className="absolute top-4 right-4 rounded-full p-1 text-white/40 transition-colors hover:bg-white/10 hover:text-white"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -363,7 +361,9 @@ export const WelcomeView = ({
 
                   <form onSubmit={handleStartPhoneCall} className="space-y-4">
                     <div>
-                      <label className="mb-1 block text-xs font-medium text-white/60">Phone Number</label>
+                      <label className="mb-1 block text-xs font-medium text-white/60">
+                        Phone Number
+                      </label>
                       <input
                         type="tel"
                         required
@@ -396,7 +396,7 @@ export const WelcomeView = ({
                     <Phone className="h-9 w-9" />
                   </motion.div>
 
-                  <span className="text-xs font-medium uppercase tracking-widest text-indigo-400 animate-pulse">
+                  <span className="animate-pulse text-xs font-medium tracking-widest text-indigo-400 uppercase">
                     Calling...
                   </span>
                   <h3 className="mt-2 text-xl font-bold text-white">{phoneNum}</h3>
@@ -415,6 +415,20 @@ export const WelcomeView = ({
               )}
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+
+      {/* Escalations Modal Overlay */}
+      <AnimatePresence>
+        {showEscalationsModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md"
+          >
+            <EscalationDashboard onClose={() => setShowEscalationsModal(false)} />
+          </motion.div>
         )}
       </AnimatePresence>
     </div>
@@ -439,14 +453,21 @@ function Capability({
       className={[
         'group border border-white/[0.06] bg-[#09090b] p-6 transition-colors duration-200 hover:bg-white/[0.02]',
         isFirst ? 'rounded-t-xl sm:rounded-t-none sm:rounded-l-xl' : '',
-        isLast ? 'rounded-b-xl sm:rounded-b-none sm:rounded-r-xl' : '',
+        isLast ? 'rounded-b-xl sm:rounded-r-xl sm:rounded-b-none' : '',
       ].join(' ')}
     >
-      <div className="mb-4 font-mono text-[10px] font-semibold tracking-widest" style={{ color: 'rgba(255,255,255,0.18)' }}>
+      <div
+        className="mb-4 font-mono text-[10px] font-semibold tracking-widest"
+        style={{ color: 'rgba(255,255,255,0.18)' }}
+      >
         {number}
       </div>
-      <h3 className="mb-2 text-[14px] font-semibold" style={{ color: 'rgba(255,255,255,0.80)' }}>{title}</h3>
-      <p className="text-[12px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.32)' }}>{body}</p>
+      <h3 className="mb-2 text-[14px] font-semibold" style={{ color: 'rgba(255,255,255,0.80)' }}>
+        {title}
+      </h3>
+      <p className="text-[12px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.32)' }}>
+        {body}
+      </p>
     </div>
   );
 }

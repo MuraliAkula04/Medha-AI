@@ -35,7 +35,8 @@ export interface AppConfig {
 export const APP_CONFIG_DEFAULTS: AppConfig = {
   companyName: 'Medha AI',
   pageTitle: 'Medha AI — Voice Learning Companion',
-  pageDescription: 'Your AI voice tutor powered by Murf Falcon TTS — multilingual, memory-enabled, always available.',
+  pageDescription:
+    'Your AI voice tutor powered by Murf Falcon TTS — multilingual, memory-enabled, always available.',
 
   supportsChatInput: true,
   supportsVideoInput: true,

@@ -1,10 +1,6 @@
-import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import {
-  AccessToken,
-  type AccessTokenOptions,
-  type VideoGrant,
-} from 'livekit-server-sdk';
+import { NextResponse } from 'next/server';
+import { AccessToken, type AccessTokenOptions, type VideoGrant } from 'livekit-server-sdk';
 import { RoomConfiguration } from '@livekit/protocol';
 
 type ConnectionDetails = {
@@ -50,7 +46,7 @@ export async function POST(req: Request) {
         },
         {
           ignoreUnknownFields: true,
-        },
+        }
       );
     }
 
@@ -68,9 +64,7 @@ export async function POST(req: Request) {
     const participantName = 'user';
     const participantIdentity = userId;
 
-    const roomName = `voice_assistant_room_${Math.floor(
-      Math.random() * 10000,
-    )}`;
+    const roomName = `voice_assistant_room_${Math.floor(Math.random() * 10000)}`;
 
     const participantToken = await createParticipantToken(
       {
@@ -78,7 +72,7 @@ export async function POST(req: Request) {
         name: participantName,
       },
       roomName,
-      roomConfig,
+      roomConfig
     );
 
     const data: ConnectionDetails = {
@@ -95,7 +89,7 @@ export async function POST(req: Request) {
     if (!cookieStore.get('medha_user_id')) {
       headers.append(
         'Set-Cookie',
-        `medha_user_id=${userId}; Path=/; Max-Age=31536000; SameSite=Lax`,
+        `medha_user_id=${userId}; Path=/; Max-Age=31536000; SameSite=Lax`
       );
     }
 
@@ -118,7 +112,7 @@ export async function POST(req: Request) {
 function createParticipantToken(
   userInfo: AccessTokenOptions,
   roomName: string,
-  roomConfig?: RoomConfiguration,
+  roomConfig?: RoomConfiguration
 ): Promise<string> {
   const at = new AccessToken(API_KEY!, API_SECRET!, {
     ...userInfo,

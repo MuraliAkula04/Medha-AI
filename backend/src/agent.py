@@ -2,6 +2,8 @@ import asyncio
 import contextlib
 import json
 import logging
+import random
+import re
 import urllib.parse
 from datetime import datetime
 
@@ -29,7 +31,13 @@ from livekit.plugins import (
 )
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
-from memory import get_user, init_database, save_user, set_opt_out_status
+from memory import (
+    get_user,
+    init_database,
+    save_escalation,
+    save_user,
+    set_opt_out_status,
+)
 
 logger = logging.getLogger("agent")
 
@@ -37,6 +45,24 @@ load_dotenv(".env.local")
 
 # Initialize SQLite database
 init_database()
+
+
+def sanitize_pii(text: str) -> str:
+    """Strip sensitive private information like passwords, OTPs, PINs, bank accounts, and card numbers."""
+    if not text:
+        return ""
+    # Redact explicit keyword matches
+    text = re.sub(
+        r"\b(password|passcode|otp|pin|cvv|account_number|card_number)\s*[:=]?\s*\S+",
+        r"\1: [REDACTED]",
+        text,
+        flags=re.IGNORECASE,
+    )
+    # Redact 4-6 digit standalone numbers (OTPs / PINs)
+    text = re.sub(r"\b\d{4,6}\b", "[REDACTED_CODE]", text)
+    # Redact 12-16 digit standalone numbers (Account / Credit Card / Aadhaar)
+    text = re.sub(r"\b\d{12,16}\b", "[REDACTED_ACCOUNT]", text)
+    return text
 
 
 SYSTEM_PROMPT = """
@@ -204,14 +230,43 @@ Never:
 If the user asks for something outside education, politely refuse.
 
 
-ESCALATION
+HUMAN HELP & ESCALATION PROTOCOL
 
-If a request is outside your role, say:
+You must know when to stop and create a human escalation request. You are an AI tutor, NOT a replacement for human teachers or counselors.
 
-"I'm sorry, that's outside my role as a learning companion.
-Please consult a qualified teacher or the appropriate professional
-for accurate guidance. I can still provide general educational
-information."
+REASONS TO ASK FOR HUMAN HELP (Choose between these 2 triggers):
+
+1. TRIGGER 1 - STUDENT EMOTIONAL DISTRESS:
+   The caller is distressed, crying, upset, expressing severe learning anxiety, or saying things like "I give up", "This is too hard for me", "I can't do this anymore", or "I'm really upset".
+
+2. TRIGGER 2 - HUMAN TEACHER CONSULTATION / DISPUTE:
+   The caller explicitly asks to speak with a human teacher, requests official human evaluation of an assignment/exam grade, or has an academic dispute/complaint requiring human decision-making.
+
+CRITICAL STEP 4 RULE - ASK BEFORE SHARING (PERMISSION FLOW):
+When either Trigger 1 or Trigger 2 occurs:
+1. Explain to the caller what information you will share with a human teacher:
+   - Their name (if known)
+   - A summary of the issue
+   - What the agent already checked
+   - Urgency level
+   - Preferred follow-up method (Phone call or WhatsApp)
+2. Ask for explicit permission:
+   "Would you like me to submit an escalation request to a human teacher for you?"
+3. ONLY IF the caller clearly says YES ("yes", "sure", "please do", "okay"):
+   Call the `create_escalation` tool!
+4. IF THE CALLER SAYS NO ("no", "don't send", "stop"):
+   DO NOT call `create_escalation`! Comfort the student, offer encouragement, and continue helping normally without creating any ticket.
+
+CLEAR NEXT STEPS AFTER ESCALATION CREATION (STEP 6 RULE):
+After `create_escalation` succeeds and returns a Reference ID (e.g. ESC-2026-8492):
+1. Recite the Reference ID clearly to the caller.
+2. Explain what will happen next honestly:
+   "Your reference ID is ESC-2026-8492. A human teacher will review your request within 24 hours and reach out via your preferred follow-up method."
+3. Do NOT promise that a human will reply immediately unless specified.
+
+NORMAL CONVERSATIONS:
+For normal study questions, math problems, quizzes, or vocabulary help, DO NOT call `create_escalation`. Handle them directly.
+
 
 
 STYLE
@@ -286,6 +341,95 @@ class Assistant(Agent):
             "The caller has been successfully unsubscribed from daily practice calls. "
             "Politely inform the caller out loud that they will no longer receive automated calls, "
             "wish them a great day, and end the conversation."
+        )
+
+    @function_tool
+    async def create_escalation(
+        self,
+        context: RunContext,
+        reason: str,
+        summary: str,
+        checked_steps: str | None = None,
+        urgency: str = "medium",
+        language: str = "English",
+        contact_method: str = "Phone Call",
+    ) -> str:
+        """
+        Create a human escalation request for a teacher or support manager.
+
+        Use this tool ONLY after the caller has given explicit permission to submit an escalation request.
+
+        Parameters:
+        - reason: Brief title of the escalation reason ("Student Emotional Distress" or "Human Teacher Consultation Request").
+        - summary: Short summary of what happened (do NOT include sensitive passwords, PINs, or account numbers).
+        - checked_steps: What Medha AI already checked or tried before escalating.
+        - urgency: "low", "medium", "high", or "emergency".
+        - language: Caller's preferred language (e.g., "English", "Telugu", "Hindi").
+        - contact_method: Preferred follow-up method (e.g., "Phone Call", "WhatsApp", "SMS", "Email").
+        """
+        # Generate reference ID format: ESC-2026-XXXX
+        random_suffix = random.randint(1000, 9999)
+        ref_id = f"ESC-2026-{random_suffix}"
+
+        # Clean PII from summary and checked_steps
+        clean_summary = sanitize_pii(summary)
+        clean_checked = sanitize_pii(
+            checked_steps
+            or "Agent verified educational materials and offered explanation."
+        )
+
+        user = get_user(self.user_id)
+        caller_name = (user.get("name") if user else None) or "Anonymous Student"
+
+        logger.info(
+            "Creating human escalation %s for user %s (%s). Urgency: %s",
+            ref_id,
+            self.user_id,
+            reason,
+            urgency,
+        )
+
+        escalation_data = save_escalation(
+            ref_id=ref_id,
+            user_id=self.user_id,
+            caller_name=caller_name,
+            reason=reason,
+            summary=clean_summary,
+            checked_steps=clean_checked,
+            urgency=urgency,
+            language=language,
+            contact_method=contact_method,
+        )
+
+        # Publish payload to LiveKit room data channel for real-time frontend UI update
+        try:
+            if (
+                context
+                and hasattr(context, "room")
+                and context.room
+                and hasattr(context.room, "local_participant")
+                and context.room.local_participant
+            ):
+                payload = json.dumps(
+                    {
+                        "type": "escalation_created",
+                        "escalation": escalation_data,
+                    }
+                ).encode("utf-8")
+                await context.room.local_participant.publish_data(payload)
+        except Exception as p_err:
+            logger.warning("Could not publish escalation data to room: %s", p_err)
+
+        return (
+            f"Escalation request successfully created.\n"
+            f"Reference ID: {ref_id}\n"
+            f"Reason: {reason}\n"
+            f"Urgency: {urgency}\n"
+            f"Follow-up Method: {contact_method}\n"
+            f"Status: Open\n"
+            f"Instruction for Assistant: Explicitly state out loud to the student that their request has been submitted with Reference ID '{ref_id}'. "
+            f"Explain that a human teacher will review their request within 24 hours and reach out via {contact_method}. "
+            f"Do NOT promise immediate response."
         )
 
     @function_tool
@@ -626,9 +770,8 @@ async def my_agent(ctx: JobContext):
         with contextlib.suppress(Exception):
             metadata = json.loads(ctx.room.metadata)
 
-    is_outbound = (
-        metadata.get("is_outbound", False)
-        or ctx.room.name.startswith("outbound-")
+    is_outbound = metadata.get("is_outbound", False) or ctx.room.name.startswith(
+        "outbound-"
     )
 
     # The job must connect to the LiveKit room before waiting for

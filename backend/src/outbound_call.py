@@ -10,7 +10,6 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-
 # ============================================================
 # PATH SETUP
 # ============================================================
@@ -68,6 +67,7 @@ init_database()
 # CALL OUTCOMES
 # ============================================================
 
+
 class CallOutcome(str, Enum):
     COMPLETED = "completed"
     NO_ANSWER = "no_answer"
@@ -81,6 +81,7 @@ class CallOutcome(str, Enum):
 # ============================================================
 # RETRY RULES
 # ============================================================
+
 
 class RetryRule:
     """Defines retry behavior for outbound call outcomes."""
@@ -101,8 +102,7 @@ class RetryRule:
             return (
                 False,
                 None,
-                f"Call ended with terminal state '{outcome.value}'. "
-                "No retry needed.",
+                f"Call ended with terminal state '{outcome.value}'. No retry needed.",
             )
 
         if outcome == CallOutcome.VOICEMAIL:
@@ -130,10 +130,8 @@ class RetryRule:
             )
 
         if outcome == CallOutcome.NO_ANSWER:
-            delay_minutes = 15 * (2 ** current_retry_count)
-            next_time = datetime.now(timezone.utc) + timedelta(
-                minutes=delay_minutes
-            )
+            delay_minutes = 15 * (2**current_retry_count)
+            next_time = datetime.now(timezone.utc) + timedelta(minutes=delay_minutes)
 
             return (
                 True,
@@ -143,10 +141,8 @@ class RetryRule:
             )
 
         if outcome == CallOutcome.BUSY:
-            delay_minutes = 10 * (2 ** current_retry_count)
-            next_time = datetime.now(timezone.utc) + timedelta(
-                minutes=delay_minutes
-            )
+            delay_minutes = 10 * (2**current_retry_count)
+            next_time = datetime.now(timezone.utc) + timedelta(minutes=delay_minutes)
 
             return (
                 True,
@@ -161,6 +157,7 @@ class RetryRule:
 # ============================================================
 # LIVEKIT ROOM
 # ============================================================
+
 
 async def _create_livekit_room(
     livekit_url: str,
@@ -179,7 +176,6 @@ async def _create_livekit_room(
             api_key=api_key,
             api_secret=api_secret,
         ) as api:
-
             await api.room.create_room(
                 CreateRoomRequest(
                     name=room_name,
@@ -204,6 +200,7 @@ async def _create_livekit_room(
 # LIVEKIT SIP DISPATCH
 # ============================================================
 
+
 async def _dispatch_agent(
     livekit_url: str,
     api_key: str,
@@ -214,6 +211,7 @@ async def _dispatch_agent(
 ) -> str:
     """Explicitly dispatch the voice agent into the outbound room."""
     from livekit.api import CreateAgentDispatchRequest, LiveKitAPI
+
     async with LiveKitAPI(
         url=livekit_url,
         api_key=api_key,
@@ -297,7 +295,6 @@ async def _dispatch_sip_participant(
         api_key=api_key,
         api_secret=api_secret,
     ) as api:
-
         sip_response = await api.sip.create_sip_participant(
             CreateSIPParticipantRequest(
                 sip_trunk_id=trunk_id,
@@ -325,6 +322,7 @@ async def _dispatch_sip_participant(
 # OUTBOUND CALL MANAGER
 # ============================================================
 
+
 class OutboundCallManager:
     """
     Manages outbound calls.
@@ -350,9 +348,8 @@ class OutboundCallManager:
         # LiveKit SIP
         # ----------------------------------------------------
 
-        self.sip_trunk_id = (
-            os.getenv("LIVEKIT_SIP_OUTBOUND_TRUNK_ID")
-            or os.getenv("LIVEKIT_SIP_TRUNK_ID")
+        self.sip_trunk_id = os.getenv("LIVEKIT_SIP_OUTBOUND_TRUNK_ID") or os.getenv(
+            "LIVEKIT_SIP_TRUNK_ID"
         )
 
         self.sip_domain = os.getenv(
@@ -364,18 +361,11 @@ class OutboundCallManager:
         # Optional Twilio fallback
         # ----------------------------------------------------
 
-        self.twilio_account_sid = os.getenv(
-            "TWILIO_ACCOUNT_SID"
-        )
+        self.twilio_account_sid = os.getenv("TWILIO_ACCOUNT_SID")
 
-        self.twilio_auth_token = os.getenv(
-            "TWILIO_AUTH_TOKEN"
-        )
+        self.twilio_auth_token = os.getenv("TWILIO_AUTH_TOKEN")
 
-        self.twilio_from_number = os.getenv(
-            "TWILIO_FROM_NUMBER"
-        )
-
+        self.twilio_from_number = os.getenv("TWILIO_FROM_NUMBER")
 
     # ========================================================
     # PLACE OUTBOUND CALL
@@ -397,10 +387,8 @@ class OutboundCallManager:
         user_data = get_user(user_id)
 
         if user_data and user_data.get("opted_out"):
-
             logger.warning(
-                "Call cancelled for user '%s': "
-                "User has opted out.",
+                "Call cancelled for user '%s': User has opted out.",
                 user_id,
             )
 
@@ -409,20 +397,14 @@ class OutboundCallManager:
                 to_number=to_number,
                 outcome=CallOutcome.OPT_OUT_SUPPRESSED,
                 retry_count=0,
-                notes=(
-                    "Call suppressed due to active "
-                    "opt-out preference."
-                ),
+                notes=("Call suppressed due to active opt-out preference."),
             )
 
         # ----------------------------------------------------
         # ROOM
         # ----------------------------------------------------
 
-        room_name = (
-            f"outbound-{user_id}-"
-            f"{int(datetime.now().timestamp())}"
-        )
+        room_name = f"outbound-{user_id}-{int(datetime.now().timestamp())}"
 
         # ----------------------------------------------------
         # OUTBOUND METADATA
@@ -430,9 +412,7 @@ class OutboundCallManager:
 
         room_metadata = {
             "is_outbound": True,
-            "outbound_reason": (
-                "Scheduled Daily Practice Call"
-            ),
+            "outbound_reason": ("Scheduled Daily Practice Call"),
             "user_id": user_id,
             "user_name": user_name,
             "topic": topic,
@@ -448,8 +428,7 @@ class OutboundCallManager:
         }
 
         logger.info(
-            "Initiating outbound call to %s "
-            "(User: %s) for topic '%s'...",
+            "Initiating outbound call to %s (User: %s) for topic '%s'...",
             to_number,
             user_name,
             topic,
@@ -460,19 +439,14 @@ class OutboundCallManager:
         # ----------------------------------------------------
 
         if simulate_outcome:
-
             outcome = CallOutcome.COMPLETED
 
             try:
-                outcome = CallOutcome(
-                    simulate_outcome.lower()
-                )
+                outcome = CallOutcome(simulate_outcome.lower())
 
             except ValueError:
-
                 logger.warning(
-                    "Invalid outcome '%s'. "
-                    "Defaulting to completed.",
+                    "Invalid outcome '%s'. Defaulting to completed.",
                     simulate_outcome,
                 )
 
@@ -488,10 +462,7 @@ class OutboundCallManager:
                 outcome=outcome,
                 retry_count=0,
                 room_name=room_name,
-                provider_call_id=(
-                    f"sim-call-"
-                    f"{int(datetime.now().timestamp())}"
-                ),
+                provider_call_id=(f"sim-call-{int(datetime.now().timestamp())}"),
                 dispatch_status="simulated",
                 metadata=room_metadata,
             )
@@ -512,12 +483,9 @@ class OutboundCallManager:
             missing_keys.append("LIVEKIT_API_SECRET")
 
         if not self.sip_trunk_id:
-            missing_keys.append(
-                "LIVEKIT_SIP_OUTBOUND_TRUNK_ID"
-            )
+            missing_keys.append("LIVEKIT_SIP_OUTBOUND_TRUNK_ID")
 
         if missing_keys:
-
             error_message = (
                 "LiveKit SIP configuration is incomplete. "
                 f"Missing: {', '.join(missing_keys)}"
@@ -525,9 +493,7 @@ class OutboundCallManager:
 
             logger.error(error_message)
 
-            print(
-                f"\n[ERROR] {error_message}\n"
-            )
+            print(f"\n[ERROR] {error_message}\n")
 
             return self.log_call_outcome(
                 user_id=user_id,
@@ -536,9 +502,7 @@ class OutboundCallManager:
                 retry_count=0,
                 room_name=room_name,
                 provider_call_id="",
-                dispatch_status=(
-                    "error_missing_livekit_credentials"
-                ),
+                dispatch_status=("error_missing_livekit_credentials"),
                 notes=error_message,
                 metadata=room_metadata,
             )
@@ -548,7 +512,6 @@ class OutboundCallManager:
         # ----------------------------------------------------
 
         try:
-
             asyncio.run(
                 _create_livekit_room(
                     self.livekit_url,
@@ -560,7 +523,6 @@ class OutboundCallManager:
             )
 
         except Exception as room_error:
-
             logger.warning(
                 "LiveKit room creation warning: %s",
                 room_error,
@@ -614,7 +576,6 @@ class OutboundCallManager:
         error_notes = ""
 
         try:
-
             sip_id = asyncio.run(
                 _dispatch_sip_participant(
                     livekit_url=self.livekit_url,
@@ -629,27 +590,17 @@ class OutboundCallManager:
                 )
             )
 
-            dispatch_status = (
-                "dispatched_livekit_sip"
-            )
+            dispatch_status = "dispatched_livekit_sip"
 
-            provider_call_id = (
-                sip_id
-                or f"sip-{int(datetime.now().timestamp())}"
-            )
+            provider_call_id = sip_id or f"sip-{int(datetime.now().timestamp())}"
 
             logger.info(
-                "Successfully dispatched LiveKit SIP "
-                "participant: %s",
+                "Successfully dispatched LiveKit SIP participant: %s",
                 provider_call_id,
             )
 
         except Exception as sip_error:
-
-            error_notes = (
-                f"LiveKit SIP dispatch failed: "
-                f"{sip_error}"
-            )
+            error_notes = f"LiveKit SIP dispatch failed: {sip_error}"
 
             logger.error(error_notes)
 
@@ -663,9 +614,7 @@ class OutboundCallManager:
             and self.twilio_auth_token
             and self.twilio_from_number
         ):
-
             try:
-
                 from twilio.rest import Client
 
                 client = Client(
@@ -673,18 +622,9 @@ class OutboundCallManager:
                     self.twilio_auth_token,
                 )
 
-                sip_uri = (
-                    f"sip:{room_name}@"
-                    f"{self.sip_domain}"
-                )
+                sip_uri = f"sip:{room_name}@{self.sip_domain}"
 
-                twiml = (
-                    "<Response>"
-                    "<Connect>"
-                    f"<Sip>{sip_uri}</Sip>"
-                    "</Connect>"
-                    "</Response>"
-                )
+                twiml = f"<Response><Connect><Sip>{sip_uri}</Sip></Connect></Response>"
 
                 call = client.calls.create(
                     to=to_number,
@@ -695,9 +635,7 @@ class OutboundCallManager:
 
                 provider_call_id = call.sid
 
-                dispatch_status = (
-                    "dispatched_twilio"
-                )
+                dispatch_status = "dispatched_twilio"
 
                 logger.info(
                     "Dispatched Twilio call: %s",
@@ -705,17 +643,11 @@ class OutboundCallManager:
                 )
 
             except Exception as twilio_error:
-
-                twilio_message = (
-                    f"Twilio fallback failed: "
-                    f"{twilio_error}"
-                )
+                twilio_message = f"Twilio fallback failed: {twilio_error}"
 
                 logger.error(twilio_message)
 
-                error_notes += (
-                    f" {twilio_message}"
-                )
+                error_notes += f" {twilio_message}"
 
         # ----------------------------------------------------
         # STEP 7 — LOG RESULT
@@ -732,7 +664,6 @@ class OutboundCallManager:
             notes=error_notes,
             metadata=room_metadata,
         )
-
 
     # ========================================================
     # LOG CALL OUTCOME
@@ -751,18 +682,13 @@ class OutboundCallManager:
         metadata: dict | None = None,
     ) -> dict:
 
-        should_retry, next_attempt_at, rationale = (
-            RetryRule.calculate_next_attempt(
-                outcome=outcome,
-                current_retry_count=retry_count,
-            )
+        should_retry, next_attempt_at, rationale = RetryRule.calculate_next_attempt(
+            outcome=outcome,
+            current_retry_count=retry_count,
         )
 
         record = {
-            "timestamp": (
-                datetime.now(timezone.utc)
-                .isoformat()
-            ),
+            "timestamp": (datetime.now(timezone.utc).isoformat()),
             "user_id": user_id,
             "to_number": to_number,
             "room_name": room_name,
@@ -771,9 +697,7 @@ class OutboundCallManager:
             "outcome": outcome.value,
             "should_retry": should_retry,
             "next_attempt_at": (
-                next_attempt_at.isoformat()
-                if next_attempt_at
-                else None
+                next_attempt_at.isoformat() if next_attempt_at else None
             ),
             "retry_count": retry_count,
             "retry_rationale": rationale,
@@ -796,13 +720,11 @@ class OutboundCallManager:
 # CLI
 # ============================================================
 
+
 def main():
 
     parser = argparse.ArgumentParser(
-        description=(
-            "Medha AI Outbound Call Trigger "
-            "(Day 6 - Linphone)"
-        )
+        description=("Medha AI Outbound Call Trigger (Day 6 - Linphone)")
     )
 
     parser.add_argument(
@@ -824,10 +746,7 @@ def main():
     parser.add_argument(
         "--user-id",
         default=None,
-        help=(
-            "User ID. Defaults to the "
-            "Linphone username."
-        ),
+        help=("User ID. Defaults to the Linphone username."),
     )
 
     parser.add_argument(
@@ -846,18 +765,12 @@ def main():
             "immediate_hangup",
             "opt_out",
         ],
-        help=(
-            "Simulate an outcome for testing "
-            "retry and opt-out logic."
-        ),
+        help=("Simulate an outcome for testing retry and opt-out logic."),
     )
 
     args = parser.parse_args()
 
-    user_id = (
-        args.user_id
-        or f"user_{args.to.replace('+', '').replace(' ', '')}"
-    )
+    user_id = args.user_id or f"user_{args.to.replace('+', '').replace(' ', '')}"
 
     manager = OutboundCallManager()
 
@@ -869,9 +782,7 @@ def main():
         simulate_outcome=args.simulate_outcome,
     )
 
-    print(
-        "\n--- OUTBOUND CALL LOG ENTRY ---"
-    )
+    print("\n--- OUTBOUND CALL LOG ENTRY ---")
 
     print(
         json.dumps(
