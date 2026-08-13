@@ -52,6 +52,28 @@ def init_database():
             )
             """
         )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS call_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                call_id TEXT UNIQUE NOT NULL,
+                room_name TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                caller_name TEXT DEFAULT 'Anonymous Student',
+                channel TEXT NOT NULL DEFAULT 'browser',
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                duration_seconds INTEGER NOT NULL DEFAULT 0,
+                outcome TEXT NOT NULL DEFAULT 'failure',
+                failure_reason TEXT,
+                topic TEXT DEFAULT 'General Learning',
+                exercises_completed INTEGER DEFAULT 0,
+                concept_lookups INTEGER DEFAULT 0,
+                first_response_latency_ms INTEGER DEFAULT 0,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
         connection.commit()
 
 
@@ -243,3 +265,188 @@ def update_escalation_status(ref_id: str, status: str) -> bool:
         )
         connection.commit()
         return cursor.rowcount > 0
+
+
+def save_call_log(
+    call_id: str,
+    room_name: str,
+    user_id: str,
+    channel: str = "browser",
+    start_time: str | None = None,
+    end_time: str | None = None,
+    duration_seconds: int = 0,
+    outcome: str = "failure",
+    failure_reason: str | None = None,
+    topic: str = "General Learning",
+    exercises_completed: int = 0,
+    concept_lookups: int = 0,
+    first_response_latency_ms: int = 0,
+    caller_name: str | None = None,
+) -> dict:
+    """Record the outcome of a voice call session into SQLite database."""
+    now = datetime.now(timezone.utc).isoformat()
+    st = start_time or now
+    et = end_time or now
+
+    # Fetch user name if not explicitly provided
+    if not caller_name:
+        user = get_user(user_id)
+        caller_name = (user.get("name") if user else None) or "Anonymous Student"
+
+    with get_connection() as connection:
+        connection.execute(
+            """
+            INSERT OR REPLACE INTO call_logs (
+                call_id, room_name, user_id, caller_name, channel,
+                start_time, end_time, duration_seconds, outcome,
+                failure_reason, topic, exercises_completed, concept_lookups,
+                first_response_latency_ms, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                call_id,
+                room_name,
+                user_id,
+                caller_name,
+                channel.lower(),
+                st,
+                et,
+                max(0, int(duration_seconds)),
+                outcome.lower(),
+                failure_reason,
+                topic,
+                int(exercises_completed),
+                int(concept_lookups),
+                int(first_response_latency_ms),
+                now,
+            ),
+        )
+        connection.commit()
+
+    return {
+        "call_id": call_id,
+        "room_name": room_name,
+        "user_id": user_id,
+        "caller_name": caller_name,
+        "channel": channel.lower(),
+        "start_time": st,
+        "end_time": et,
+        "duration_seconds": duration_seconds,
+        "outcome": outcome.lower(),
+        "failure_reason": failure_reason,
+        "topic": topic,
+        "exercises_completed": exercises_completed,
+        "concept_lookups": concept_lookups,
+        "first_response_latency_ms": first_response_latency_ms,
+        "created_at": now,
+    }
+
+
+def get_call_logs(limit: int = 50) -> list[dict]:
+    """Retrieve recent call logs sorted by created_at DESC."""
+    with get_connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT * FROM call_logs
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_call_analytics() -> dict:
+    """Retrieve aggregated call analytics metrics for Day 8 dashboard."""
+    with get_connection() as connection:
+        total_calls = (
+            connection.execute("SELECT COUNT(*) FROM call_logs").fetchone()[0] or 0
+        )
+        successful_calls = (
+            connection.execute(
+                "SELECT COUNT(*) FROM call_logs WHERE outcome = 'success'"
+            ).fetchone()[0]
+            or 0
+        )
+        failed_calls = (
+            connection.execute(
+                "SELECT COUNT(*) FROM call_logs WHERE outcome = 'failure'"
+            ).fetchone()[0]
+            or 0
+        )
+
+        success_rate = (
+            round((successful_calls / total_calls) * 100, 1) if total_calls > 0 else 0.0
+        )
+
+        total_exercises = (
+            connection.execute(
+                "SELECT COALESCE(SUM(exercises_completed), 0) FROM call_logs"
+            ).fetchone()[0]
+            or 0
+        )
+
+        total_concept_lookups = (
+            connection.execute(
+                "SELECT COALESCE(SUM(concept_lookups), 0) FROM call_logs"
+            ).fetchone()[0]
+            or 0
+        )
+
+        avg_duration = (
+            connection.execute(
+                "SELECT COALESCE(AVG(duration_seconds), 0) FROM call_logs"
+            ).fetchone()[0]
+            or 0.0
+        )
+
+        avg_latency = (
+            connection.execute(
+                "SELECT COALESCE(AVG(first_response_latency_ms), 0) FROM call_logs WHERE first_response_latency_ms > 0"
+            ).fetchone()[0]
+            or 0.0
+        )
+
+        # Channel counts
+        browser_calls = (
+            connection.execute(
+                "SELECT COUNT(*) FROM call_logs WHERE channel = 'browser'"
+            ).fetchone()[0]
+            or 0
+        )
+        sip_calls = (
+            connection.execute(
+                "SELECT COUNT(*) FROM call_logs WHERE channel = 'sip'"
+            ).fetchone()[0]
+            or 0
+        )
+
+        # Failure reasons breakdown
+        failure_rows = connection.execute(
+            """
+            SELECT failure_reason, COUNT(*) as count
+            FROM call_logs
+            WHERE outcome = 'failure' AND failure_reason IS NOT NULL
+            GROUP BY failure_reason
+            """
+        ).fetchall()
+        failure_types = {r["failure_reason"]: r["count"] for r in failure_rows}
+
+        recent_calls = get_call_logs(limit=20)
+
+        return {
+            "total_calls": total_calls,
+            "successful_calls": successful_calls,
+            "failed_calls": failed_calls,
+            "success_rate": success_rate,
+            "total_exercises": total_exercises,
+            "total_concept_lookups": total_concept_lookups,
+            "avg_duration_seconds": round(avg_duration, 1),
+            "avg_latency_ms": round(avg_latency, 1),
+            "channels": {
+                "browser": browser_calls,
+                "sip": sip_calls,
+            },
+            "failure_types": failure_types,
+            "recent_calls": recent_calls,
+        }

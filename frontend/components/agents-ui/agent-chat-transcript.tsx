@@ -1,6 +1,6 @@
 'use client';
 
-import { type ComponentProps } from 'react';
+import { useMemo, type ComponentProps } from 'react';
 import { AnimatePresence } from 'motion/react';
 import { type AgentState, type ReceivedMessage } from '@livekit/components-react';
 import { AgentChatIndicator } from '@/components/agents-ui/agent-chat-indicator';
@@ -17,16 +17,55 @@ export interface AgentChatTranscriptProps extends ComponentProps<'div'> {
   className?: string;
 }
 
+/**
+ * Combines consecutive messages from the same speaker into a single sentence/turn
+ * so speech does not get fragmented into several partial messages.
+ */
+function groupMessages(rawMessages: ReceivedMessage[]): ReceivedMessage[] {
+  if (!rawMessages || rawMessages.length === 0) return [];
+
+  const grouped: ReceivedMessage[] = [];
+
+  for (const msg of rawMessages) {
+    if (!msg.message || !msg.message.trim()) continue;
+    const last = grouped[grouped.length - 1];
+
+    const isUser = msg.from?.isLocal === true;
+    const lastIsUser = last?.from?.isLocal === true;
+    const isSameSpeaker = last && isUser === lastIsUser;
+
+    // If consecutive messages are from the same speaker within 6 seconds, merge them!
+    const isRecent = last && Math.abs(msg.timestamp - last.timestamp) < 6000;
+
+    if (isSameSpeaker && isRecent) {
+      // Append new sentence segment cleanly
+      const currentText = last.message.trim();
+      const newText = msg.message.trim();
+      // Avoid duplicate exact repeats if STT sends identical phrase
+      if (!currentText.endsWith(newText)) {
+        last.message = `${currentText} ${newText}`;
+      }
+      last.timestamp = msg.timestamp;
+    } else {
+      grouped.push({ ...msg });
+    }
+  }
+
+  return grouped;
+}
+
 export function AgentChatTranscript({
   agentState,
   messages = [],
   className,
   ...props
 }: AgentChatTranscriptProps) {
+  const groupedMessages = useMemo(() => groupMessages(messages), [messages]);
+
   return (
     <Conversation className={className} {...props}>
-      <ConversationContent className="mx-auto w-full max-w-3xl space-y-7 px-4 py-8 md:px-6">
-        {messages.map((receivedMessage) => {
+      <ConversationContent className="mx-auto w-full max-w-3xl space-y-6 px-4 py-8 md:px-6">
+        {groupedMessages.map((receivedMessage) => {
           const { id, timestamp, from, message } = receivedMessage;
 
           const isUser = from?.isLocal === true;
@@ -49,26 +88,26 @@ export function AgentChatTranscript({
               className={`flex w-full ${isUser ? 'justify-end' : 'justify-start'}`}
             >
               <div
-                className={`flex max-w-[88%] items-end gap-3 md:max-w-[76%] ${
+                className={`flex max-w-[90%] items-start gap-3 md:max-w-[80%] ${
                   isUser ? 'flex-row-reverse' : 'flex-row'
                 }`}
               >
                 {/* Avatar */}
                 <div
-                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
+                  className={`mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
                     isUser
-                      ? 'border border-white/10 bg-white/[0.07] text-white/70'
-                      : 'bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-lg shadow-indigo-500/20'
+                      ? 'border border-violet-400/30 bg-violet-500/20 text-violet-200 shadow-md shadow-violet-950/40'
+                      : 'bg-gradient-to-br from-violet-600 to-indigo-600 text-white shadow-lg shadow-violet-500/30'
                   }`}
                 >
                   {isUser ? 'You' : 'M'}
                 </div>
 
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   {/* Speaker */}
                   <div
-                    className={`mb-1.5 px-1 text-[11px] font-medium tracking-wide text-white/40 ${
-                      isUser ? 'text-right' : 'text-left'
+                    className={`mb-1.5 px-1 text-[11px] font-semibold tracking-wide ${
+                      isUser ? 'text-right text-violet-300/80' : 'text-left text-violet-400'
                     }`}
                   >
                     {isUser ? 'You' : 'Medha AI'}
@@ -76,18 +115,20 @@ export function AgentChatTranscript({
 
                   {/* Bubble */}
                   <MessageContent
-                    className={`rounded-2xl px-4 py-3 text-sm leading-6 md:text-[15px] ${
+                    className={`rounded-2xl px-5 py-3.5 text-sm leading-relaxed md:text-[15px] ${
                       isUser
-                        ? 'rounded-br-md bg-white/[0.08] text-white'
-                        : 'rounded-bl-md border border-white/[0.07] bg-white/[0.035] text-white/90'
+                        ? 'rounded-tr-xs border border-violet-500/35 bg-violet-600/25 text-white shadow-md shadow-violet-950/30'
+                        : 'rounded-tl-xs border border-violet-500/20 bg-[#161622] text-slate-100 shadow-xl shadow-black/40'
                     }`}
                   >
-                    <MessageResponse>{message}</MessageResponse>
+                    <MessageResponse className="text-slate-100 dark:text-slate-100">
+                      {message}
+                    </MessageResponse>
                   </MessageContent>
 
                   {/* Timestamp */}
                   <div
-                    className={`mt-1.5 px-1 text-[10px] text-white/25 ${
+                    className={`mt-1.5 px-1 text-[10px] text-white/30 ${
                       isUser ? 'text-right' : 'text-left'
                     }`}
                   >
@@ -99,18 +140,18 @@ export function AgentChatTranscript({
           );
         })}
 
-        {/* Thinking */}
+        {/* Thinking State */}
         <AnimatePresence>
           {agentState === 'thinking' && (
-            <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-[11px] font-semibold text-white">
+            <div className="flex items-start gap-3">
+              <div className="mt-1 flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-violet-600 to-indigo-600 text-[11px] font-bold text-white shadow-lg shadow-violet-500/30">
                 M
               </div>
 
               <div>
-                <div className="mb-1.5 text-[11px] font-medium text-white/40">Medha AI</div>
+                <div className="mb-1.5 text-[11px] font-semibold text-violet-400">Medha AI</div>
 
-                <div className="rounded-2xl rounded-bl-md border border-white/[0.07] bg-white/[0.035] px-4 py-3">
+                <div className="rounded-2xl rounded-tl-xs border border-violet-500/20 bg-[#161622] px-5 py-3.5 shadow-xl shadow-black/40">
                   <AgentChatIndicator size="sm" />
                 </div>
               </div>

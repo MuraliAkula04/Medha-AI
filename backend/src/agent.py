@@ -5,7 +5,7 @@ import logging
 import random
 import re
 import urllib.parse
-from datetime import datetime
+from datetime import datetime, timezone
 
 import httpx
 from dotenv import load_dotenv
@@ -34,6 +34,7 @@ from livekit.plugins.turn_detector.multilingual import MultilingualModel
 from memory import (
     get_user,
     init_database,
+    save_call_log,
     save_escalation,
     save_user,
     set_opt_out_status,
@@ -307,6 +308,12 @@ class Assistant(Agent):
     def __init__(self, user_id: str = "default_student") -> None:
         self.user_id = user_id
         self.memory_consent = False
+        self.exercises_completed = 0
+        self.concept_lookups = 0
+        self.topic = "General Learning"
+        self.escalation_created = False
+        self.unsubscribed = False
+        self.first_response_latency_ms = None
 
         super().__init__(instructions=SYSTEM_PROMPT)
 
@@ -318,6 +325,7 @@ class Assistant(Agent):
         Use this tool whenever the caller asks to stop receiving calls, requests to opt out,
         says 'stop calling me', 'unsubscribe', or 'do not call again'.
         """
+        self.unsubscribed = True
         logger.info("Unsubscribing user %s from outbound calls", self.user_id)
         set_opt_out_status(self.user_id, opted_out=True)
 
@@ -367,6 +375,7 @@ class Assistant(Agent):
         - language: Caller's preferred language (e.g., "English", "Telugu", "Hindi").
         - contact_method: Preferred follow-up method (e.g., "Phone Call", "WhatsApp", "SMS", "Email").
         """
+        self.escalation_created = True
         # Generate reference ID format: ESC-2026-XXXX
         random_suffix = random.randint(1000, 9999)
         ref_id = f"ESC-2026-{random_suffix}"
@@ -558,6 +567,8 @@ class Assistant(Agent):
         definitions, formulas, or history topics that require accurate up-to-date verification.
         """
         as_of_date = datetime.now().strftime("%B %d, %Y %H:%M IST")
+        self.concept_lookups += 1
+        self.topic = topic
         logger.info("Looking up educational concept '%s' (as of %s)", topic, as_of_date)
 
         url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(topic)}"
@@ -642,6 +653,8 @@ class Assistant(Agent):
         chain with their saved memory level.
         """
         as_of_date = datetime.now().strftime("%B %d, %Y %H:%M IST")
+        self.exercises_completed += 1
+        self.topic = subject
 
         # Tool Chaining: if level is not specified, check Day 4 user memory
         effective_level = level
@@ -812,6 +825,8 @@ async def my_agent(ctx: JobContext):
     session = AgentSession(
         stt=deepgram.STT(
             model="nova-3",
+            interim_results=True,
+            smart_format=True,
         ),
         llm=google.LLM(
             model="gemini-3.5-flash-lite",
@@ -825,59 +840,124 @@ async def my_agent(ctx: JobContext):
         ),
         turn_detection=MultilingualModel(),
         vad=ctx.proc.userdata["vad"],
+        min_endpointing_delay=1.0,
         preemptive_generation=True,
     )
 
     # Start the session only after the outbound SIP participant has joined.
     # This prevents the TTS pipeline from being started before the phone
     # participant is actually connected to the room.
-    logger.info("Starting AgentSession for user %s", user_id)
+    start_time = datetime.now(timezone.utc)
+    channel = (
+        "sip"
+        if is_outbound
+        or (
+            participant
+            and hasattr(participant, "kind")
+            and participant.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP
+        )
+        else "browser"
+    )
+    call_id = f"{ctx.room.name}_{int(start_time.timestamp())}"
+    assistant = Assistant(user_id=user_id)
 
-    await session.start(
-        agent=Assistant(
-            user_id=user_id,
-        ),
-        room=ctx.room,
-        room_options=room_io.RoomOptions(
-            audio_input=room_io.AudioInputOptions(
-                noise_cancellation=lambda params: (
-                    noise_cancellation.BVCTelephony()
-                    if params.participant.kind
-                    == rtc.ParticipantKind.PARTICIPANT_KIND_SIP
-                    else noise_cancellation.BVC()
+    try:
+        await session.start(
+            agent=assistant,
+            room=ctx.room,
+            room_options=room_io.RoomOptions(
+                audio_input=room_io.AudioInputOptions(
+                    noise_cancellation=lambda params: (
+                        noise_cancellation.BVCTelephony()
+                        if params.participant.kind
+                        == rtc.ParticipantKind.PARTICIPANT_KIND_SIP
+                        else noise_cancellation.BVC()
+                    ),
                 ),
             ),
-        ),
-    )
-
-    # Explicitly speak first on outbound calls.
-    if is_outbound:
-        topic_info = metadata.get(
-            "topic",
-            "today's revision topic",
         )
 
-        greeting_text = (
-            "Hello! I am Medha AI, your AI Voice Learning Companion "
-            "from VoiceForBharat. "
-            f"I am calling for your scheduled daily practice call "
-            f"to review {topic_info} and take a quick quiz. "
-            "If you ever want to end this call or stop receiving "
-            "daily practice calls, just say 'stop' or 'unsubscribe'."
+        # Explicitly speak first on outbound calls.
+        if is_outbound:
+            topic_info = metadata.get(
+                "topic",
+                "today's revision topic",
+            )
+
+            greeting_text = (
+                "Hello! I am Medha AI, your AI Voice Learning Companion "
+                "from VoiceForBharat. "
+                f"I am calling for your scheduled daily practice call "
+                f"to review {topic_info} and take a quick quiz. "
+                "If you ever want to end this call or stop receiving "
+                "daily practice calls, just say 'stop' or 'unsubscribe'."
+            )
+
+            logger.info(
+                "Speaking outbound greeting to %s",
+                user_id,
+            )
+
+            await session.say(
+                greeting_text,
+                allow_interruptions=True,
+            )
+
+        assistant.first_response_latency_ms = int(
+            (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
         )
 
+        # Keep the agent job alive for the duration of the call.
+        await asyncio.Event().wait()
+
+    finally:
+        end_time = datetime.now(timezone.utc)
+        duration_seconds = max(0, int((end_time - start_time).total_seconds()))
+
+        # Determine success condition for Learning & Literacy track:
+        # Success if student completed an exercise, searched a concept, confirmed memory consent, or created an escalation ticket.
+        if (
+            assistant.exercises_completed > 0
+            or assistant.concept_lookups > 0
+            or assistant.memory_consent
+            or assistant.escalation_created
+        ):
+            outcome = "success"
+            failure_reason = None
+        elif assistant.unsubscribed:
+            outcome = "failure"
+            failure_reason = "user_opt_out"
+        elif duration_seconds < 15:
+            outcome = "failure"
+            failure_reason = "user_hung_up_early"
+        else:
+            outcome = "failure"
+            failure_reason = "incomplete_task"
+
+        save_call_log(
+            call_id=call_id,
+            room_name=ctx.room.name,
+            user_id=user_id,
+            channel=channel,
+            start_time=start_time.isoformat(),
+            end_time=end_time.isoformat(),
+            duration_seconds=duration_seconds,
+            outcome=outcome,
+            failure_reason=failure_reason,
+            topic=assistant.topic,
+            exercises_completed=assistant.exercises_completed,
+            concept_lookups=assistant.concept_lookups,
+            first_response_latency_ms=assistant.first_response_latency_ms or 1200,
+        )
         logger.info(
-            "Speaking outbound greeting to %s",
-            user_id,
+            "Logged call session %s: outcome=%s, channel=%s, duration=%ds, exercises=%d, lookups=%d",
+            call_id,
+            outcome,
+            channel,
+            duration_seconds,
+            assistant.exercises_completed,
+            assistant.concept_lookups,
         )
-
-        await session.say(
-            greeting_text,
-            allow_interruptions=True,
-        )
-
-    # Keep the agent job alive for the duration of the call.
-    await asyncio.Event().wait()
 
 
 if __name__ == "__main__":
