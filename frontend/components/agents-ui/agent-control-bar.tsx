@@ -13,6 +13,7 @@ import {
 } from '@/components/agents-ui/agent-track-toggle';
 import { Button } from '@/components/ui/button';
 import { Toggle } from '@/components/ui/toggle';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   type UseInputControlsProps,
   useInputControls,
@@ -117,7 +118,7 @@ function AgentChatInput({ chatOpen, onSend = async () => {}, className }: AgentC
         placeholder="Type something to Medha..."
         onKeyDown={handleKeyDown}
         onChange={(e) => setMessage(e.target.value)}
-        className="field-sizing-content max-h-16 min-h-8 flex-1 resize-none rounded-xl border border-white/10 bg-white/[0.06] px-3.5 py-2 text-sm text-white placeholder-white/40 outline-none transition-colors [scrollbar-width:thin] focus:border-violet-500/50 disabled:cursor-not-allowed disabled:opacity-50"
+        className="field-sizing-content max-h-16 min-h-8 flex-1 resize-none rounded-xl border border-white/10 bg-white/[0.06] px-3.5 py-2 text-sm text-white placeholder-white/40 transition-colors outline-none [scrollbar-width:thin] focus:border-violet-500/50 disabled:cursor-not-allowed disabled:opacity-50"
       />
       <Button
         size="icon"
@@ -254,6 +255,7 @@ export function AgentControlBar({
   const { send } = useChat();
   const publishPermissions = usePublishPermissions();
   const [isChatOpenUncontrolled, setIsChatOpenUncontrolled] = useState(isChatOpen);
+  const actualChatOpen = onIsChatOpenChange !== undefined ? isChatOpen : isChatOpenUncontrolled;
   const {
     microphoneTrack,
     cameraToggle,
@@ -288,7 +290,7 @@ export function AgentControlBar({
     <div
       aria-label="Voice assistant controls"
       className={cn(
-        'bg-[#12121c]/95 border-white/15 border text-white shadow-2xl backdrop-blur-xl flex flex-col p-3',
+        'flex flex-col border border-white/15 bg-[#12121c]/95 p-3 text-white shadow-2xl backdrop-blur-xl',
         variant === 'livekit' ? 'rounded-[31px]' : 'rounded-lg',
         className
       )}
@@ -296,12 +298,12 @@ export function AgentControlBar({
     >
       <motion.div
         {...MOTION_PROPS}
-        inert={!(isChatOpen || isChatOpenUncontrolled)}
-        animate={isChatOpen || isChatOpenUncontrolled ? 'visible' : 'hidden'}
-        className="border-white/10 flex w-full items-start overflow-hidden border-b"
+        inert={!actualChatOpen}
+        animate={actualChatOpen ? 'visible' : 'hidden'}
+        className="flex w-full items-start overflow-hidden border-b border-white/10"
       >
         <AgentChatInput
-          chatOpen={isChatOpen || isChatOpenUncontrolled}
+          chatOpen={actualChatOpen}
           onSend={handleSendMessage}
           className={cn(variant === 'livekit' && '[&_button]:rounded-full')}
         />
@@ -311,94 +313,158 @@ export function AgentControlBar({
         <div className="flex grow gap-1">
           {/* Toggle Microphone */}
           {visibleControls.microphone && (
-            <AgentTrackControl
-              variant={variant === 'outline' ? 'outline' : 'default'}
-              kind="audioinput"
-              aria-label="Toggle microphone"
-              source={Track.Source.Microphone}
-              pressed={microphoneToggle.enabled}
-              disabled={microphoneToggle.pending}
-              audioTrack={microphoneTrack}
-              onPressedChange={microphoneToggle.toggle}
-              onActiveDeviceChange={handleAudioDeviceChange}
-              onMediaDeviceError={handleMicrophoneDeviceSelectError}
-              className={cn(
-                variant === 'livekit' && [
-                  LK_TOGGLE_VARIANT_1,
-                  'rounded-full [&_button:first-child]:rounded-l-full [&_button:last-child]:rounded-r-full',
-                ]
-              )}
-            />
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div>
+                    <AgentTrackControl
+                      variant={variant === 'outline' ? 'outline' : 'default'}
+                      kind="audioinput"
+                      aria-label="Toggle microphone"
+                      source={Track.Source.Microphone}
+                      pressed={microphoneToggle.enabled}
+                      disabled={microphoneToggle.pending}
+                      audioTrack={microphoneTrack}
+                      onPressedChange={microphoneToggle.toggle}
+                      onActiveDeviceChange={handleAudioDeviceChange}
+                      onMediaDeviceError={handleMicrophoneDeviceSelectError}
+                      className={cn(
+                        variant === 'livekit' && [
+                          LK_TOGGLE_VARIANT_1,
+                          'rounded-full [&_button:first-child]:rounded-l-full [&_button:last-child]:rounded-r-full',
+                        ]
+                      )}
+                    />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent
+                  side="top"
+                  className="border-white/20 bg-[#1e1b4b] text-xs font-medium text-white"
+                >
+                  {microphoneToggle.enabled ? 'Mute Microphone' : 'Unmute Microphone'}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           )}
 
           {/* Toggle Camera */}
           {visibleControls.camera && (
-            <AgentTrackControl
-              variant={variant === 'outline' ? 'outline' : 'default'}
-              kind="videoinput"
-              aria-label="Toggle camera"
-              source={Track.Source.Camera}
-              pressed={cameraToggle.enabled}
-              pending={cameraToggle.pending}
-              disabled={cameraToggle.pending}
-              onPressedChange={cameraToggle.toggle}
-              onMediaDeviceError={handleCameraDeviceSelectError}
-              onActiveDeviceChange={handleVideoDeviceChange}
-              className={cn(
-                variant === 'livekit' && [
-                  LK_TOGGLE_VARIANT_1,
-                  'rounded-full [&_button:first-child]:rounded-l-full [&_button:last-child]:rounded-r-full',
-                ]
-              )}
-            />
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div>
+                    <AgentTrackControl
+                      variant={variant === 'outline' ? 'outline' : 'default'}
+                      kind="videoinput"
+                      aria-label="Toggle camera"
+                      source={Track.Source.Camera}
+                      pressed={cameraToggle.enabled}
+                      pending={cameraToggle.pending}
+                      disabled={cameraToggle.pending}
+                      onPressedChange={cameraToggle.toggle}
+                      onMediaDeviceError={handleCameraDeviceSelectError}
+                      onActiveDeviceChange={handleVideoDeviceChange}
+                      className={cn(
+                        variant === 'livekit' && [
+                          LK_TOGGLE_VARIANT_1,
+                          'rounded-full [&_button:first-child]:rounded-l-full [&_button:last-child]:rounded-r-full',
+                        ]
+                      )}
+                    />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent
+                  side="top"
+                  className="border-white/20 bg-[#1e1b4b] text-xs font-medium text-white"
+                >
+                  {cameraToggle.enabled ? 'Turn Off Camera' : 'Turn On Camera'}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           )}
 
           {/* Toggle Screen Share */}
           {visibleControls.screenShare && (
-            <AgentTrackToggle
-              variant={variant === 'outline' ? 'outline' : 'default'}
-              aria-label="Toggle screen share"
-              source={Track.Source.ScreenShare}
-              pressed={screenShareToggle.enabled}
-              disabled={screenShareToggle.pending}
-              onPressedChange={screenShareToggle.toggle}
-              className={cn(variant === 'livekit' && [LK_TOGGLE_VARIANT_2, 'rounded-full'])}
-            />
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <AgentTrackToggle
+                    variant={variant === 'outline' ? 'outline' : 'default'}
+                    aria-label="Toggle screen share"
+                    source={Track.Source.ScreenShare}
+                    pressed={screenShareToggle.enabled}
+                    disabled={screenShareToggle.pending}
+                    onPressedChange={screenShareToggle.toggle}
+                    className={cn(variant === 'livekit' && [LK_TOGGLE_VARIANT_2, 'rounded-full'])}
+                  />
+                </TooltipTrigger>
+                <TooltipContent
+                  side="top"
+                  className="border-white/20 bg-[#1e1b4b] text-xs font-medium text-white"
+                >
+                  {screenShareToggle.enabled ? 'Stop Screen Share' : 'Share Screen'}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           )}
 
           {/* Toggle Transcript */}
           {visibleControls.chat && (
-            <Toggle
-              variant={variant === 'outline' ? 'outline' : 'default'}
-              pressed={isChatOpen || isChatOpenUncontrolled}
-              aria-label="Toggle transcript"
-              onPressedChange={(state) => {
-                if (!onIsChatOpenChange) setIsChatOpenUncontrolled(state);
-                else onIsChatOpenChange(state);
-              }}
-              className={agentTrackToggleVariants({
-                variant: variant === 'outline' ? 'outline' : 'default',
-                className: cn(variant === 'livekit' && [LK_TOGGLE_VARIANT_2, 'rounded-full']),
-              })}
-            >
-              <MessageSquareTextIcon />
-            </Toggle>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Toggle
+                    variant={variant === 'outline' ? 'outline' : 'default'}
+                    pressed={actualChatOpen}
+                    aria-label="Toggle transcript"
+                    onPressedChange={(state) => {
+                      if (!onIsChatOpenChange) setIsChatOpenUncontrolled(state);
+                      else onIsChatOpenChange(state);
+                    }}
+                    className={agentTrackToggleVariants({
+                      variant: variant === 'outline' ? 'outline' : 'default',
+                      className: cn(variant === 'livekit' && [LK_TOGGLE_VARIANT_2, 'rounded-full']),
+                    })}
+                  >
+                    <MessageSquareTextIcon />
+                  </Toggle>
+                </TooltipTrigger>
+                <TooltipContent
+                  side="top"
+                  className="border-white/20 bg-[#1e1b4b] text-xs font-medium text-white"
+                >
+                  {actualChatOpen ? 'Hide Transcript' : 'Show Transcript'}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           )}
         </div>
 
         {/* Disconnect */}
         {visibleControls.leave && (
-          <AgentDisconnectButton
-            onClick={onDisconnect}
-            disabled={!isConnected}
-            className={cn(
-              variant === 'livekit' &&
-                'bg-destructive/10 dark:bg-destructive/10 text-destructive hover:bg-destructive/20 dark:hover:bg-destructive/20 focus:bg-destructive/20 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/4 rounded-full font-mono text-xs font-bold tracking-wider'
-            )}
-          >
-            <span className="hidden md:inline">END CALL</span>
-            <span className="inline md:hidden">END</span>
-          </AgentDisconnectButton>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <AgentDisconnectButton
+                  onClick={onDisconnect}
+                  disabled={!isConnected}
+                  className={cn(
+                    variant === 'livekit' &&
+                      'bg-destructive/10 dark:bg-destructive/10 text-destructive hover:bg-destructive/20 dark:hover:bg-destructive/20 focus:bg-destructive/20 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/4 rounded-full font-mono text-xs font-bold tracking-wider'
+                  )}
+                >
+                  <span className="hidden md:inline">END CALL</span>
+                  <span className="inline md:hidden">END</span>
+                </AgentDisconnectButton>
+              </TooltipTrigger>
+              <TooltipContent
+                side="top"
+                className="border-white/20 bg-[#1e1b4b] text-xs font-medium text-white"
+              >
+                End Voice Call
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         )}
       </div>
     </div>

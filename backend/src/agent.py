@@ -66,6 +66,29 @@ def sanitize_pii(text: str) -> str:
     return text
 
 
+def sanitize_math_formatting(text: str) -> str:
+    """
+    Strip LaTeX math syntax like dollar signs ($ and $$), \times, \text{}, etc.
+    This prevents the TTS engine from pronouncing the word 'dollar' out loud
+    and keeps the screen display clean.
+    """
+    if not text:
+        return ""
+    # Strip \text{...} -> ...
+    text = re.sub(r"\\text\{([^}]*)\}", r"\1", text)
+    # Replace \times -> x or *
+    text = re.sub(r"\\times", "x", text)
+    # Replace \cdot -> *
+    text = re.sub(r"\\cdot", "*", text)
+    # Strip LaTeX fraction \frac{a}{b} -> (a/b)
+    text = re.sub(r"\\frac\{([^}]*)\}\{([^}]*)\}", r"(\1/\2)", text)
+    # Strip LaTeX square root \sqrt{a} -> sqrt(\1)
+    text = re.sub(r"\\sqrt\{([^}]*)\}", r"sqrt(\1)", text)
+    # Remove all dollar signs ($)
+    text = text.replace("$", "")
+    return text
+
+
 SYSTEM_PROMPT = """
 You are Medha AI, a friendly AI Voice Learning Companion created for
 students in India as part of the VoiceForBharat Learning & Literacy track.
@@ -283,6 +306,32 @@ When the user code-mixes, code-mix your response too.
 Avoid sounding like a textbook.
 
 
+SPECIALIST HANDOFF PROTOCOL
+
+You are a general educational companion. However, for mathematics practice, step-by-step math problem solving, mental math tricks, algebra, or geometry questions, you MUST hand off the voice conversation to our dedicated Maths Practice Specialist.
+
+HANDOFF TRIGGER:
+Whenever the student asks for math help, math exercises, mental math tricks, algebra, geometry, arithmetic, or math word problems, you MUST call the `hand_off_to_maths_specialist` tool.
+
+MANDATORY HANDOFF ANNOUNCEMENT RULE:
+Before calling `hand_off_to_maths_specialist`, you MUST announce out loud to the student:
+"I will connect you to our Maths Practice Specialist right now!"
+Then immediately call `hand_off_to_maths_specialist`.
+
+Do NOT attempt to solve complex math problems yourself when the Maths Specialist is available.
+
+
+STRICT MATH FORMATTING RULES (CRITICAL FOR VOICE & DISPLAY)
+
+1. NEVER use dollar signs ($ or $$) around math terms, numbers, variables, or equations! (e.g. NEVER write $x^2$, $+4$, or $2$).
+2. NEVER use LaTeX syntax or commands such as \times, \text, \frac, \\sqrt.
+3. Always write math in plain conversational text or standard keyboard characters:
+   - Write "x squared" or "x^2" without dollar signs.
+   - Write "2 times x" or "2 * x" instead of "\times".
+   - Write "x^2 + 4x + 4 = 0" directly without any $ symbols.
+4. REASON: Dollar signs cause the text-to-speech synthesizer to pronounce the word "DOLLAR" out loud (e.g. "dollar x squared dollar"), and LaTeX syntax displays raw code on screen!
+
+
 OUTBOUND CALL RULES & OPT-OUT
 
 When on an automated outbound call, you MUST open with the exact 3-part greeting:
@@ -304,6 +353,142 @@ When an inbound conversation starts, simply say:
 """
 
 
+MATHS_SPECIALIST_PROMPT = """
+You are the Maths Practice Specialist for Medha AI in the VoiceForBharat initiative.
+
+IDENTITY & ROLE:
+- You are a specialized AI Mathematics Tutor.
+- Your sole focus is helping students master mathematics: step-by-step problem solving, arithmetic, algebra, geometry, trigonometry, mental math tricks, formulas, and math practice questions.
+- Keep your job smaller and more focused than Medha AI's general role. You DO NOT answer general science, history, English literature, or non-math questions.
+
+HANDOFF & INTRODUCING YOURSELF:
+- When handed off a conversation, greet the student enthusiastically as the Maths Practice Specialist!
+- Example: "Hello! I am Medha AI's Maths Practice Specialist. Let's solve this math problem together!"
+- Immediately address the student's math request or problem based on the preceding conversation context.
+
+NON-MATH QUESTIONS & HANDBACK:
+- If the student asks a non-mathematical question (e.g., science, history, English literature, general advice, or asks to speak back with Medha AI), politely explain that you are the Maths Specialist, announce out loud: "I will connect you back to Medha AI!", and call the `hand_off_to_main_agent` tool!
+
+STYLE & LANGUAGE:
+- Speak like a friendly, encouraging Indian math teacher.
+- Use short sentences, clear steps, and natural tone.
+- Support English, Telugu, and Hindi code-mixing.
+
+STRICT MATH FORMATTING RULES (CRITICAL FOR VOICE & DISPLAY):
+1. NEVER use dollar signs ($ or $$) around math terms, numbers, variables, or equations! (e.g. NEVER write $x^2$, $+4$, or $2$).
+2. NEVER use LaTeX syntax or commands such as \times, \text, \frac, \\sqrt.
+3. Always write math in plain conversational text or standard keyboard characters:
+   - Write "x squared" or "x^2" without dollar signs.
+   - Write "2 times x" or "2 * x" instead of "\times".
+   - Write "x^2 + 4x + 4 = 0" directly without any $ symbols.
+4. REASON: Dollar signs cause the text-to-speech synthesizer to pronounce the word "DOLLAR" out loud (e.g. "dollar x squared dollar"), and LaTeX syntax displays raw code on screen!
+"""
+
+
+class MathsSpecialist(Agent):
+    def __init__(self, user_id: str = "default_student") -> None:
+        self.user_id = user_id
+        self.math_problems_solved = 0
+        super().__init__(instructions=MATHS_SPECIALIST_PROMPT)
+
+    @function_tool
+    async def solve_math_step_by_step(
+        self,
+        context: RunContext,
+        math_problem: str,
+        topic: str | None = None,
+    ) -> str:
+        """
+        Solve a mathematics problem step-by-step with clear explanations for the student.
+
+        Use this tool whenever the student presents a math equation, word problem, or calculation to solve.
+        """
+        self.math_problems_solved += 1
+        logger.info(
+            "MathsSpecialist solving problem '%s' for user %s",
+            math_problem,
+            self.user_id,
+        )
+
+        return (
+            f"Math problem recorded for step-by-step breakdown.\n"
+            f"Problem: {math_problem}\n"
+            f"Topic: {topic or 'Mathematics'}\n"
+            f"Instruction for Specialist: Break down this problem into 2-3 clear, step-by-step logical stages. "
+            f"Use ONLY plain conversational text and standard keyboard characters. "
+            f"CRITICAL RULE: NEVER use dollar signs ($) or LaTeX syntax like \\times or \\text. Write x^2 instead of $x^2$."
+        )
+
+    @function_tool
+    async def generate_mental_math_trick(
+        self,
+        context: RunContext,
+        operation: str,
+    ) -> str:
+        """
+        Provide a mental mathematics shortcut or trick for quick mental calculation.
+
+        Use this tool when the student asks for mental math shortcuts, speed math tricks, or quick calculation methods (e.g., multiplying by 11, squaring numbers ending in 5, quick percentage tricks).
+        """
+        logger.info(
+            "MathsSpecialist generating mental math trick for operation '%s'",
+            operation,
+        )
+        return (
+            f"Mental math trick request for: {operation}.\n"
+            f"Instruction for Specialist: Explain one simple, memorable mental math shortcut for {operation} with a quick example. "
+            f"CRITICAL RULE: Use ONLY plain text without dollar signs ($) or LaTeX syntax."
+        )
+
+    @function_tool
+    async def hand_off_to_main_agent(
+        self,
+        context: RunContext,
+        reason: str,
+    ) -> str:
+        """
+        Hand off the conversation back to Medha AI (Main Agent).
+
+        Use this tool when the math practice is completed, or when the student asks a non-math question (science, history, literature) or explicitly requests to talk to Medha AI.
+        Before calling this tool, announce out loud to the student:
+        'I will connect you back to Medha AI!'
+        """
+        logger.info(
+            "MathsSpecialist handing off back to Assistant for user %s (Reason: %s)",
+            self.user_id,
+            reason,
+        )
+        main_assistant = Assistant(user_id=self.user_id)
+        context.session.update_agent(main_assistant)
+
+        # Publish room data event
+        try:
+            if (
+                context
+                and hasattr(context, "room")
+                and context.room
+                and hasattr(context.room, "local_participant")
+                and context.room.local_participant
+            ):
+                payload = json.dumps(
+                    {
+                        "type": "agent_handoff",
+                        "active_agent": "Medha AI (Main Agent)",
+                        "previous_agent": "Maths Practice Specialist",
+                        "reason": reason,
+                        "timestamp": datetime.now().isoformat(),
+                    }
+                ).encode("utf-8")
+                await context.room.local_participant.publish_data(payload)
+        except Exception as err:
+            logger.warning("Could not publish handoff data to room: %s", err)
+
+        return (
+            "Handoff back to Medha AI (Main Agent) successful.\n"
+            "Instruction for Assistant: Greet the caller as Medha AI and continue helping with their general educational request."
+        )
+
+
 class Assistant(Agent):
     def __init__(self, user_id: str = "default_student") -> None:
         self.user_id = user_id
@@ -312,10 +497,63 @@ class Assistant(Agent):
         self.concept_lookups = 0
         self.topic = "General Learning"
         self.escalation_created = False
+        self.specialist_handoff = False
         self.unsubscribed = False
         self.first_response_latency_ms = None
 
         super().__init__(instructions=SYSTEM_PROMPT)
+
+    @function_tool
+    async def hand_off_to_maths_specialist(
+        self,
+        context: RunContext,
+        topic_or_problem: str,
+    ) -> str:
+        """
+        Hand off the voice conversation to the Maths Practice Specialist agent.
+
+        Use this tool IMMEDIATELY whenever the caller asks for math assistance, math problem solving,
+        arithmetic practice, algebra, geometry, mental math shortcuts, math word problems, or math formulas.
+
+        Before calling this tool, announce out loud to the caller:
+        'I will connect you to our Maths Practice Specialist right now!'
+        """
+        self.specialist_handoff = True
+        logger.info(
+            "Handing off conversation for user %s to MathsPracticeSpecialist (Topic: %s)",
+            self.user_id,
+            topic_or_problem,
+        )
+
+        specialist = MathsSpecialist(user_id=self.user_id)
+        context.session.update_agent(specialist)
+
+        # Publish room data message for UI visual feedback
+        try:
+            if (
+                context
+                and hasattr(context, "room")
+                and context.room
+                and hasattr(context.room, "local_participant")
+                and context.room.local_participant
+            ):
+                payload = json.dumps(
+                    {
+                        "type": "agent_handoff",
+                        "active_agent": "Maths Practice Specialist",
+                        "previous_agent": "Medha AI (Main Agent)",
+                        "topic": topic_or_problem,
+                        "timestamp": datetime.now().isoformat(),
+                    }
+                ).encode("utf-8")
+                await context.room.local_participant.publish_data(payload)
+        except Exception as err:
+            logger.warning("Could not publish handoff data to room: %s", err)
+
+        return (
+            f"Handoff successful. The active agent is now MathsPracticeSpecialist.\n"
+            f"Instruction for Specialist: Introduce yourself out loud to the student as the Maths Practice Specialist and answer their math request ({topic_or_problem}) directly."
+        )
 
     @function_tool
     async def unsubscribe_outbound_calls(self, context: RunContext) -> str:
@@ -921,6 +1159,7 @@ async def my_agent(ctx: JobContext):
             or assistant.concept_lookups > 0
             or assistant.memory_consent
             or assistant.escalation_created
+            or assistant.specialist_handoff
         ):
             outcome = "success"
             failure_reason = None

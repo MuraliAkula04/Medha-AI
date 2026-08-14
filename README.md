@@ -177,10 +177,14 @@ Track:
 - 📊 **Human Escalation Dashboard**: Built real-time Next.js UI dashboard (`/api/escalations` + LiveKit room data channel) to track, filter, and resolve open escalation tickets.
 - 🧪 **Automated & LLM-Judged Test Suite**: Written 16 comprehensive unit & LLM-as-judge tests in `pytest` verifying both escalation and normal session paths.
 
-### 🔜 Upcoming
+### ✅ Day 9 – Hand Off to a Specialist Agent
 
-- Learning Progress Analytics & Student Report Cards
-- Multi-channel Notification Integrations (WhatsApp / SMS alerts)
+- 🧮 **Dedicated Specialist Agent (`MathsSpecialist`)**: Built a focused mathematics practice specialist with specific instructions, step-by-step problem breakdown tools (`solve_math_step_by_step`), and mental math calculation tricks (`generate_mental_math_trick`).
+- 🔄 **Dynamic Agent Handoff Tool (`hand_off_to_maths_specialist`)**: Equips Medha AI with seamless session switching via `context.session.update_agent(MathsSpecialist)`.
+- 🗣️ **Out-Loud Announcement**: Medha AI explicitly informs the student out loud (*"I will connect you to our Maths Practice Specialist right now!"*) prior to executing handoff.
+- 🤝 **Seamless Context & Round-Trip Handback**: Preserves full conversation history so students do not repeat themselves, and provides `hand_off_to_main_agent` to return to Medha AI when math work finishes or topic changes.
+- 📡 **Real-Time UI Telemetry**: Emits `agent_handoff` room data channel payloads to visually notify frontend interfaces of active agent transitions.
+- 🧪 **Comprehensive Evaluation Suite**: Added 4 unit & LLM-as-judge tests in `tests/test_handoff.py` validating both normal routing and specialist handoff paths.
 
 ---
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, type ComponentProps } from 'react';
+import { type ComponentProps, useMemo } from 'react';
 import { AnimatePresence } from 'motion/react';
 import { type AgentState, type ReceivedMessage } from '@livekit/components-react';
 import { AgentChatIndicator } from '@/components/agents-ui/agent-chat-indicator';

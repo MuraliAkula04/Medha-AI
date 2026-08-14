@@ -1,16 +1,7 @@
 'use client';
 
 import { useCallback, useRef, useState } from 'react';
-import {
-  ArrowRight,
-  BarChart3,
-  Mic,
-  Phone,
-  PhoneCall,
-  Sparkles,
-  UserCheck,
-  X,
-} from 'lucide-react';
+import { ArrowRight, BarChart3, Mic, Phone, PhoneCall, Sparkles, UserCheck, X } from 'lucide-react';
 import { AnimatePresence, motion, useAnimationFrame } from 'motion/react';
 import { AnalyticsDashboard } from '@/components/app/analytics-dashboard';
 import { EscalationDashboard } from '@/components/app/escalation-dashboard';
@@ -152,7 +143,7 @@ export const WelcomeView = ({
               e.stopPropagation();
               setShowAnalyticsModal(true);
             }}
-            className="pointer-events-auto relative z-50 flex cursor-pointer select-none items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-1 text-[11px] font-medium text-slate-300 transition-all hover:border-white/20 hover:bg-white/[0.07] active:scale-95"
+            className="pointer-events-auto relative z-50 flex cursor-pointer items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-1 text-[11px] font-medium text-slate-300 transition-all select-none hover:border-white/20 hover:bg-white/[0.07] active:scale-95"
           >
             <BarChart3 className="h-3 w-3 text-emerald-400" />
             <span>Call Analytics</span>
@@ -167,7 +158,7 @@ export const WelcomeView = ({
               e.stopPropagation();
               setShowEscalationsModal(true);
             }}
-            className="pointer-events-auto relative z-50 flex cursor-pointer select-none items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-1 text-[11px] font-medium text-slate-300 transition-all hover:border-white/20 hover:bg-white/[0.07] active:scale-95"
+            className="pointer-events-auto relative z-50 flex cursor-pointer items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-1 text-[11px] font-medium text-slate-300 transition-all select-none hover:border-white/20 hover:bg-white/[0.07] active:scale-95"
           >
             <UserCheck className="h-3 w-3 text-purple-400" />
             <span>Human Escalations</span>
@@ -185,7 +176,7 @@ export const WelcomeView = ({
               setIsCalling(false);
               setIsModalOpen(true);
             }}
-            className="pointer-events-auto relative z-50 flex cursor-pointer select-none items-center gap-1.5 rounded-full bg-gradient-to-r from-violet-600 to-indigo-600 px-3.5 py-1.5 text-[11px] font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] transition-all hover:shadow-[0_0_22px_rgba(139,92,246,0.5)] active:scale-95"
+            className="pointer-events-auto relative z-50 flex cursor-pointer items-center gap-1.5 rounded-full bg-gradient-to-r from-violet-600 to-indigo-600 px-3.5 py-1.5 text-[11px] font-semibold text-white shadow-[0_0_16px_rgba(139,92,246,0.35)] transition-all select-none hover:shadow-[0_0_22px_rgba(139,92,246,0.5)] active:scale-95"
           >
             <PhoneCall className="h-3 w-3" />
             <span>Make Phone Call</span>
@@ -196,7 +187,6 @@ export const WelcomeView = ({
 
       {/* ══ HERO ══════════════════════════════════════════════════════════════ */}
       <main className="relative z-10 mx-auto flex w-full max-w-5xl flex-1 flex-col items-center justify-center px-6 py-20 md:py-28">
-
         {/* ── Top Badge ── */}
         <motion.div
           initial={{ opacity: 0, y: 6 }}
@@ -213,7 +203,7 @@ export const WelcomeView = ({
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.55, delay: 0.07 }}
-          className="max-w-3xl text-center text-[42px] font-bold leading-[1.06] tracking-[-0.04em] text-white sm:text-5xl md:text-[64px]"
+          className="max-w-3xl text-center text-[42px] leading-[1.06] font-bold tracking-[-0.04em] text-white sm:text-5xl md:text-[64px]"
         >
           Your AI tutor,{' '}
           <span className="bg-gradient-to-r from-violet-400 via-purple-300 to-indigo-400 bg-clip-text text-transparent">
@@ -305,7 +295,7 @@ export const WelcomeView = ({
               setHovered(false);
               setSparkleRotated(false);
             }}
-            className="group pointer-events-auto relative z-50 flex cursor-pointer select-none items-center gap-3 overflow-hidden rounded-full bg-gradient-to-r from-violet-600 to-indigo-600 px-7 py-3.5 text-[15px] font-bold text-white shadow-[0_0_20px_rgba(139,92,246,0.25)] transition-all duration-200 hover:shadow-[0_0_30px_rgba(139,92,246,0.5)] active:scale-[0.97]"
+            className="group pointer-events-auto relative z-50 flex cursor-pointer items-center gap-3 overflow-hidden rounded-full bg-gradient-to-r from-violet-600 to-indigo-600 px-7 py-3.5 text-[15px] font-bold text-white shadow-[0_0_20px_rgba(139,92,246,0.25)] transition-all duration-200 select-none hover:shadow-[0_0_30px_rgba(139,92,246,0.5)] active:scale-[0.97]"
           >
             {/* Shine sweep */}
             <span className="pointer-events-none absolute inset-0 translate-x-[-100%] skew-x-[-20deg] bg-white/10 transition-transform duration-500 group-hover:translate-x-[200%]" />
@@ -316,10 +306,7 @@ export const WelcomeView = ({
               <Sparkles className="h-4 w-4" />
             </motion.span>
             {startButtonText || 'Start Learning Now'}
-            <motion.span
-              animate={hovered ? { x: 3 } : { x: 0 }}
-              transition={{ duration: 0.2 }}
-            >
+            <motion.span animate={hovered ? { x: 3 } : { x: 0 }} transition={{ duration: 0.2 }}>
               <ArrowRight className="h-4 w-4 opacity-70" />
             </motion.span>
           </button>
@@ -558,4 +545,3 @@ function LiveDot() {
     </div>
   );
 }
-
